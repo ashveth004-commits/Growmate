@@ -71,7 +71,7 @@ function Layout({ children }: { children: React.ReactNode }) {
           <div className="bg-green-600 p-2 rounded-xl">
             <Leaf className="text-white w-6 h-6" />
           </div>
-          <h1 className="text-xl font-bold text-stone-900 tracking-tight">PlantCare AI</h1>
+          <h1 className="text-xl font-bold text-stone-900 tracking-tight">GrowMate</h1>
         </div>
 
         <nav className="flex-1 px-4 space-y-1">

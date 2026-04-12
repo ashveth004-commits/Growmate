@@ -99,37 +99,10 @@ export default function Login() {
           <Leaf className="text-white w-10 h-10" />
         </div>
         
-        <h1 className="text-3xl font-bold text-stone-900 mb-2">PlantCare AI</h1>
+        <h1 className="text-3xl font-bold text-stone-900 mb-2">GrowMate</h1>
         <p className="text-stone-500 mb-10 leading-relaxed">
           Your personal AI-powered plant care assistant. Manage, track, and grow your plants with ease.
         </p>
-
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm font-medium flex items-start gap-3 text-left">
-            <div className="bg-red-100 p-1 rounded-lg mt-0.5">
-              <AlertCircle className="w-4 h-4" />
-            </div>
-            <div className="flex-1">
-              <p className="font-bold mb-1">Login failed</p>
-              <p className="opacity-90 leading-relaxed">{error}</p>
-              
-              <div className="mt-4 pt-4 border-t border-red-100 space-y-3">
-                <p className="text-xs font-bold uppercase tracking-wider text-red-400">Troubleshooting:</p>
-                <ul className="text-xs space-y-2 list-disc ml-4 opacity-80">
-                  <li>Ensure <strong>third-party cookies</strong> are enabled in your browser.</li>
-                  <li>Try clicking the <strong>"Open in new tab"</strong> button at the top right of this preview.</li>
-                  <li>Verify that <strong>{window.location.hostname}</strong> is added to <strong>Authorized Domains</strong> in your Firebase Console (Authentication {'>'} Settings).</li>
-                </ul>
-                <div className="bg-white/50 p-2 rounded-lg border border-red-100 mt-2">
-                  <p className="text-[10px] text-stone-400 mb-1 uppercase font-bold">Domain to Authorize:</p>
-                  <code className="text-[10px] block break-all bg-stone-100 p-1 rounded select-all">
-                    {window.location.hostname}
-                  </code>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
 
         <button
           onClick={handleGoogleLogin}
@@ -162,33 +135,6 @@ export default function Login() {
           <Leaf className="w-5 h-5" />
           Continue as Guest (No Login Required)
         </button>
-
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={testFirebaseConnection}
-            disabled={testing}
-            className={cn(
-              "text-xs font-bold py-2 px-4 rounded-xl transition-all border",
-              connStatus === 'success' ? "bg-green-50 border-green-200 text-green-600" :
-              connStatus === 'error' ? "bg-red-50 border-red-200 text-red-600" :
-              "bg-stone-50 border-stone-100 text-stone-400 hover:bg-stone-100"
-            )}
-          >
-            {testing ? 'Testing Connection...' : 
-             connStatus === 'success' ? '✓ Firebase Connected' :
-             connStatus === 'error' ? '✕ Connection Failed' :
-             'Test Firebase Connection'}
-          </button>
-          
-          <a 
-            href={window.location.href} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="text-xs font-bold text-green-600 hover:text-green-700 py-2 px-4 rounded-xl bg-green-50 border border-green-100 transition-all text-center"
-          >
-            Open in New Tab (Fixes most login issues)
-          </a>
-        </div>
 
         <p className="mt-8 text-xs text-stone-400">
           By continuing, you agree to our Terms of Service and Privacy Policy.

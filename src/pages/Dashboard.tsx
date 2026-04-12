@@ -14,11 +14,14 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const userId = auth.currentUser?.uid || (isGuest ? 'guest-123' : null);
+    
+    if (!userId) return;
 
     const plantsQuery = query(
       collection(db, 'plants'),
-      where('ownerId', '==', auth.currentUser.uid)
+      where('ownerId', '==', userId)
     );
 
     const unsubscribePlants = onSnapshot(plantsQuery, (snapshot) => {
@@ -43,7 +46,9 @@ export default function Dashboard() {
     <div className="space-y-8">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Welcome back, {auth.currentUser?.displayName?.split(' ')[0]}!</h1>
+          <h1 className="text-3xl font-bold text-stone-900 tracking-tight">
+            Welcome back, {(auth.currentUser?.displayName || (localStorage.getItem('isGuest') === 'true' ? 'Guest' : 'User'))?.split(' ')[0]}!
+          </h1>
           <p className="text-stone-500 mt-1">You have {plants.length} plants in your care.</p>
         </div>
         <Link to="/add-plant" className="inline-flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-2xl font-semibold hover:bg-green-700 transition-all shadow-lg shadow-green-100">

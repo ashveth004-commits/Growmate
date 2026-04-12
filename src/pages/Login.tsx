@@ -30,6 +30,14 @@ export default function Login() {
     }
   };
 
+  const handleGuestLogin = () => {
+    // Set a flag in localStorage to indicate guest mode
+    localStorage.setItem('isGuest', 'true');
+    // We can't easily mock auth.currentUser globally without more complex state,
+    // so we'll just navigate and handle it in ProtectedRoute
+    navigate('/');
+  };
+
   const handleGoogleLogin = async () => {
     setLoading(true);
     setError(null);
@@ -136,6 +144,13 @@ export default function Login() {
               Continue with Google
             </>
           )}
+        </button>
+
+        <button
+          onClick={handleGuestLogin}
+          className="w-full py-4 rounded-2xl font-semibold text-stone-600 hover:bg-stone-100 transition-all border border-stone-200 mb-8"
+        >
+          Continue as Guest (No Login Required)
         </button>
 
         <div className="flex flex-col gap-3">

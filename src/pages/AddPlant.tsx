@@ -36,14 +36,17 @@ export default function AddPlant() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!auth.currentUser) return;
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const userId = auth.currentUser?.uid || (isGuest ? 'guest-123' : null);
+    
+    if (!userId) return;
 
     setLoading(true);
     try {
       // 1. Upload Image if exists
       let photoUrl = '';
       if (imageFile && storage) {
-        const storageRef = ref(storage, `plants/${auth.currentUser.uid}/${Date.now()}_${imageFile.name}`);
+        const storageRef = ref(storage, `plants/${userId}/${Date.now()}_${imageFile.name}`);
         const snapshot = await uploadBytes(storageRef, imageFile);
         photoUrl = await getDownloadURL(snapshot.ref);
       } else if (imageFile && !storage) {
@@ -56,7 +59,7 @@ export default function AddPlant() {
       // 3. Save to Firestore
       const plantData = {
         ...formData,
-        ownerId: auth.currentUser.uid,
+        ownerId: userId,
         createdAt: serverTimestamp(),
         ...aiProfile,
         photoUrl,

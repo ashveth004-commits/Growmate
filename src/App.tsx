@@ -22,14 +22,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    if (isGuest) {
+      setLoading(false);
+      return;
+    }
+
     return onAuthStateChanged(auth, (user) => {
       setUser(user);
       setLoading(false);
     });
   }, []);
 
+  const isGuest = localStorage.getItem('isGuest') === 'true';
   if (loading) return <div className="flex items-center justify-center h-screen"><Leaf className="animate-bounce text-green-600 w-12 h-12" /></div>;
-  if (!user) return <Navigate to="/login" />;
+  if (!user && !isGuest) return <Navigate to="/login" />;
 
   return <>{children}</>;
 }
@@ -37,15 +44,24 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
+  const isGuest = localStorage.getItem('isGuest') === 'true';
 
   useEffect(() => {
     return onAuthStateChanged(auth, (user) => setUser(user));
   }, []);
 
   const handleLogout = async () => {
+    localStorage.removeItem('isGuest');
     await signOut(auth);
     navigate('/login');
   };
+
+  const displayUser = user || (isGuest ? {
+    displayName: 'Guest User',
+    email: 'guest@example.com',
+    uid: 'guest-123',
+    photoURL: null
+  } : null);
 
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col md:flex-row">
@@ -83,10 +99,10 @@ function Layout({ children }: { children: React.ReactNode }) {
 
         <div className="p-4 border-t border-stone-100">
           <div className="flex items-center gap-3 px-4 py-3 mb-2">
-            <img src={user?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.uid}`} alt="Avatar" className="w-8 h-8 rounded-full border border-stone-200" />
+            <img src={displayUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayUser?.uid}`} alt="Avatar" className="w-8 h-8 rounded-full border border-stone-200" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-stone-900 truncate">{user?.displayName || 'User'}</p>
-              <p className="text-xs text-stone-500 truncate">{user?.email}</p>
+              <p className="text-sm font-semibold text-stone-900 truncate">{displayUser?.displayName || 'User'}</p>
+              <p className="text-xs text-stone-500 truncate">{displayUser?.email}</p>
             </div>
           </div>
           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all font-medium">

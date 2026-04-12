@@ -11,19 +11,39 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const userId = auth.currentUser?.uid || (isGuest ? 'guest-123' : null);
+    
+    if (!userId) return;
 
     const fetchProfile = async () => {
-      const docRef = doc(db, 'users', auth.currentUser!.uid);
+      const docRef = doc(db, 'users', userId);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
         setProfile(docSnap.data() as UserProfile);
+      } else if (isGuest) {
+        setProfile({
+          uid: 'guest-123',
+          email: 'guest@example.com',
+          displayName: 'Guest User',
+          photoURL: '',
+          role: 'user',
+          createdAt: new Date().toISOString()
+        });
       }
       setLoading(false);
     };
 
     fetchProfile();
   }, []);
+
+  const isGuest = localStorage.getItem('isGuest') === 'true';
+  const displayUser = auth.currentUser || (isGuest ? {
+    displayName: 'Guest User',
+    email: 'guest@example.com',
+    uid: 'guest-123',
+    photoURL: null
+  } : null);
 
   if (loading) return <div className="flex items-center justify-center h-64"><Leaf className="animate-bounce text-green-600 w-8 h-8" /></div>;
 
@@ -39,7 +59,7 @@ export default function Profile() {
           <div className="bg-white rounded-3xl border border-stone-100 shadow-sm p-8 text-center">
             <div className="relative inline-block mb-4">
               <img 
-                src={auth.currentUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${auth.currentUser?.uid}`} 
+                src={displayUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayUser?.uid}`} 
                 alt="Avatar" 
                 className="w-24 h-24 rounded-full border-4 border-stone-50 shadow-inner"
               />
@@ -47,8 +67,8 @@ export default function Profile() {
                 <Settings className="text-white w-4 h-4" />
               </div>
             </div>
-            <h2 className="text-xl font-bold text-stone-900">{auth.currentUser?.displayName}</h2>
-            <p className="text-stone-500 text-sm">{auth.currentUser?.email}</p>
+            <h2 className="text-xl font-bold text-stone-900">{displayUser?.displayName}</h2>
+            <p className="text-stone-500 text-sm">{displayUser?.email}</p>
             <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-stone-100 rounded-full text-[10px] font-bold uppercase tracking-wider text-stone-600">
               <Shield className="w-3 h-3" />
               {profile?.role || 'User'}
@@ -81,7 +101,7 @@ export default function Profile() {
                   <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
                   <input
                     type="text"
-                    defaultValue={auth.currentUser?.displayName || ''}
+                    defaultValue={displayUser?.displayName || ''}
                     className="w-full pl-12 pr-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 outline-none transition-all"
                   />
                 </div>
@@ -93,7 +113,7 @@ export default function Profile() {
                   <input
                     disabled
                     type="email"
-                    defaultValue={auth.currentUser?.email || ''}
+                    defaultValue={displayUser?.email || ''}
                     className="w-full pl-12 pr-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-stone-400 cursor-not-allowed outline-none"
                   />
                 </div>

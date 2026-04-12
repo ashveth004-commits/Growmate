@@ -12,9 +12,12 @@ export default function Calendar() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!auth.currentUser) return;
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const userId = auth.currentUser?.uid || (isGuest ? 'guest-123' : null);
+    
+    if (!userId) return;
 
-    const plantsQuery = query(collection(db, 'plants'), where('ownerId', '==', auth.currentUser.uid));
+    const plantsQuery = query(collection(db, 'plants'), where('ownerId', '==', userId));
     const unsubscribe = onSnapshot(plantsQuery, (snapshot) => {
       setPlants(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Plant)));
       setLoading(false);

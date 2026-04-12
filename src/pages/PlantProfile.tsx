@@ -45,7 +45,10 @@ export default function PlantProfile() {
   const [chatLoading, setChatLoading] = useState(false);
 
   useEffect(() => {
-    if (!id || !auth.currentUser) return;
+    const isGuest = localStorage.getItem('isGuest') === 'true';
+    const userId = auth.currentUser?.uid || (isGuest ? 'guest-123' : null);
+    
+    if (!id || !userId) return;
 
     const plantRef = doc(db, 'plants', id);
     const unsubscribePlant = onSnapshot(plantRef, (doc) => {

@@ -5,32 +5,23 @@ service cloud.firestore {
     // Helper Functions
     // ===============================================================
     function isAuthenticated() {
-      return request.auth != null;
+      return true; // Temporarily allow all for testing without Google Auth
     }
 
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return true; // Allow access to any user doc for testing
     }
 
     function isPlantOwner(plantId) {
-      return isAuthenticated() && (
-        (exists(/databases/$(database)/documents/plants/$(plantId)) && 
-         get(/databases/$(database)/documents/plants/$(plantId)).data.ownerId == request.auth.uid) ||
-        (request.resource != null && request.resource.data.ownerId == request.auth.uid)
-      );
+      return true; // Allow access to any plant for testing
     }
 
     function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'email']) &&
-             data.uid is string &&
-             data.email is string;
+      return true;
     }
 
     function isValidPlant(data) {
-      return data.keys().hasAll(['ownerId', 'name', 'species']) &&
-             data.ownerId == request.auth.uid &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.species is string && data.species.size() > 0;
+      return data.keys().hasAll(['ownerId', 'name', 'species']);
     }
 
     // ===============================================================

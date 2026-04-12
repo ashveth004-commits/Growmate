@@ -4,7 +4,7 @@ import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User 
 import { auth, db } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { UserProfile } from './types';
-import { Leaf, LayoutDashboard, Calendar as CalendarIcon, User as UserIcon, Plus, LogOut, MessageCircle } from 'lucide-react';
+import { Leaf, LayoutDashboard, Calendar as CalendarIcon, User as UserIcon, Plus, LogOut, MessageCircle, TrendingUp } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 
@@ -15,6 +15,7 @@ import PlantProfile from './pages/PlantProfile';
 import Calendar from './pages/Calendar';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
+import CropPredictor from './pages/CropPredictor';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -66,6 +67,10 @@ function Layout({ children }: { children: React.ReactNode }) {
             <CalendarIcon className="w-5 h-5" />
             Calendar
           </Link>
+          <Link to="/crop-predictor" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
+            <TrendingUp className="w-5 h-5" />
+            Crop Predictor
+          </Link>
           <Link to="/add-plant" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
             <Plus className="w-5 h-5" />
             Add Plant
@@ -110,6 +115,7 @@ export default function App() {
         <Route path="/add-plant" element={<ProtectedRoute><Layout><AddPlant /></Layout></ProtectedRoute>} />
         <Route path="/plant/:id" element={<ProtectedRoute><Layout><PlantProfile /></Layout></ProtectedRoute>} />
         <Route path="/calendar" element={<ProtectedRoute><Layout><Calendar /></Layout></ProtectedRoute>} />
+        <Route path="/crop-predictor" element={<ProtectedRoute><Layout><CropPredictor /></Layout></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Layout><Profile /></Layout></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>

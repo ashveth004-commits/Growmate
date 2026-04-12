@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { Leaf, Droplets, Thermometer, Sun, Plus, ChevronRight, AlertCircle, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { motion } from 'motion/react';
 import { format, isAfter, parseISO } from 'date-fns';
+import WeatherAlerts from '../components/WeatherAlerts';
 
 export default function Dashboard() {
   const [plants, setPlants] = useState<Plant[]>([]);
@@ -50,6 +51,8 @@ export default function Dashboard() {
           Add New Plant
         </Link>
       </header>
+
+      <WeatherAlerts plants={plants} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Plants Grid */}

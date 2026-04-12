@@ -1,5 +1,5 @@
 {
   "name": "PlantCare AI",
   "description": "An AI-powered plant care assistant that helps users manage and track their plants throughout their lifetime with smart reminders and health diagnostics.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["geolocation"]
 }

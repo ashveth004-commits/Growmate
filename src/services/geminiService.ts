@@ -107,3 +107,78 @@ export async function getPlantChatResponse(plant: Plant, message: string, histor
   const response = await chat.sendMessage({ message });
   return response.text;
 }
+
+export async function generateWeatherSuggestions(weather: any, plants: Plant[]) {
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Given the current weather data: ${JSON.stringify(weather)} 
+    and the user's plant collection: ${JSON.stringify(plants.map(p => ({ name: p.name, species: p.species, isIndoor: p.isIndoor, location: p.location })))}
+    
+    Generate specific care suggestions in JSON format:
+    - watering: string (how to adjust watering for these plants based on humidity/rain/temp)
+    - fertilizing: string (is it a good time to fertilize? consider temp and season)
+    - diseaseRisk: { level: string, description: string } (risk of pests or fungus based on humidity/temp)
+    - generalTip: string (one actionable tip for today)`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          watering: { type: Type.STRING },
+          fertilizing: { type: Type.STRING },
+          diseaseRisk: {
+            type: Type.OBJECT,
+            properties: {
+              level: { type: Type.STRING },
+              description: { type: Type.STRING }
+            },
+            required: ["level", "description"]
+          },
+          generalTip: { type: Type.STRING }
+        },
+        required: ["watering", "fertilizing", "diseaseRisk", "generalTip"]
+      }
+    }
+  });
+
+  return JSON.parse(response.text || "{}");
+}
+
+export async function predictCropYield(input: any, weather: any) {
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `Predict the crop yield and profit for the following parameters:
+    - Land Size: ${input.landSize} ${input.landUnit}
+    - Crop Type: ${input.cropType}
+    - Current Weather Context: ${JSON.stringify(weather)}
+    
+    Provide a detailed prediction in JSON format:
+    - expectedYield: string (e.g. "150-200 kg")
+    - expectedYieldValue: number (the mean value)
+    - yieldUnit: string (e.g. "kg")
+    - profitEstimation: string (a summary of profit potential)
+    - estimatedRevenue: number (in USD)
+    - estimatedCosts: number (in USD)
+    - factors: string[] (list of factors affecting this prediction like soil, weather, etc.)
+    - recommendations: string[] (list of actionable steps to maximize yield)`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          expectedYield: { type: Type.STRING },
+          expectedYieldValue: { type: Type.NUMBER },
+          yieldUnit: { type: Type.STRING },
+          profitEstimation: { type: Type.STRING },
+          estimatedRevenue: { type: Type.NUMBER },
+          estimatedCosts: { type: Type.NUMBER },
+          factors: { type: Type.ARRAY, items: { type: Type.STRING } },
+          recommendations: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ["expectedYield", "expectedYieldValue", "yieldUnit", "profitEstimation", "estimatedRevenue", "estimatedCosts", "factors", "recommendations"]
+      }
+    }
+  });
+
+  return JSON.parse(response.text || "{}");
+}

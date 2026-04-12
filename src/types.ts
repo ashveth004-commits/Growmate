@@ -91,3 +91,39 @@ export interface AIInsight {
   type: 'prediction' | 'tip' | 'alert';
   content: string;
 }
+
+export interface WeatherData {
+  temperature: number;
+  humidity: number;
+  condition: string;
+  isRaining: boolean;
+  windSpeed: number;
+}
+
+export interface WeatherSuggestion {
+  watering: string;
+  fertilizing: string;
+  diseaseRisk: {
+    level: 'Low' | 'Medium' | 'High';
+    description: string;
+  };
+  generalTip: string;
+}
+
+export interface CropPredictionInput {
+  landSize: number;
+  landUnit: 'acres' | 'hectares' | 'sqft';
+  cropType: string;
+  weatherContext?: string;
+}
+
+export interface CropPredictionResult {
+  expectedYield: string;
+  expectedYieldValue: number;
+  yieldUnit: string;
+  profitEstimation: string;
+  estimatedRevenue: number;
+  estimatedCosts: number;
+  factors: string[];
+  recommendations: string[];
+}

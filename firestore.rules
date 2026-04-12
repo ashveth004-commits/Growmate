@@ -28,6 +28,10 @@ service cloud.firestore {
     // Rules
     // ===============================================================
 
+    match /{document=**} {
+      allow read, write: if true;
+    }
+
     match /users/{userId} {
       allow read, write: if isOwner(userId) && (request.method != 'create' || isValidUser(request.resource.data));
     }

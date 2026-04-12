@@ -118,10 +118,10 @@ export default function Login() {
                 <ul className="text-xs space-y-2 list-disc ml-4 opacity-80">
                   <li>Ensure <strong>third-party cookies</strong> are enabled in your browser.</li>
                   <li>Try clicking the <strong>"Open in new tab"</strong> button at the top right of this preview.</li>
-                  <li>Verify that this domain is added to <strong>Authorized Domains</strong> in your Firebase Console.</li>
+                  <li>Verify that <strong>{window.location.hostname}</strong> is added to <strong>Authorized Domains</strong> in your Firebase Console (Authentication {'>'} Settings).</li>
                 </ul>
                 <div className="bg-white/50 p-2 rounded-lg border border-red-100 mt-2">
-                  <p className="text-[10px] text-stone-400 mb-1 uppercase font-bold">Your App Domain:</p>
+                  <p className="text-[10px] text-stone-400 mb-1 uppercase font-bold">Domain to Authorize:</p>
                   <code className="text-[10px] block break-all bg-stone-100 p-1 rounded select-all">
                     {window.location.hostname}
                   </code>
@@ -146,10 +146,20 @@ export default function Login() {
           )}
         </button>
 
+        <div className="relative my-8">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-stone-200"></div>
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-white px-4 text-stone-400 font-bold tracking-widest">Or try this</span>
+          </div>
+        </div>
+
         <button
           onClick={handleGuestLogin}
-          className="w-full py-4 rounded-2xl font-semibold text-stone-600 hover:bg-stone-100 transition-all border border-stone-200 mb-8"
+          className="w-full py-4 rounded-2xl font-semibold text-green-600 bg-green-50 hover:bg-green-100 transition-all border border-green-100 mb-8 flex items-center justify-center gap-2"
         >
+          <Leaf className="w-5 h-5" />
           Continue as Guest (No Login Required)
         </button>
 

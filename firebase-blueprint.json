@@ -1,0 +1,156 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "App user profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] }
+      },
+      "required": ["uid", "email"]
+    },
+    "Plant": {
+      "title": "Plant",
+      "description": "A user's plant profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "name": { "type": "string" },
+        "species": { "type": "string" },
+        "isIndoor": { "type": "boolean" },
+        "plantationDate": { "type": "string", "format": "date-time" },
+        "location": { "type": "string" },
+        "potSize": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "age": { "type": "string" },
+        "expectedLifespan": { "type": "string" },
+        "healthStatus": { "type": "string" },
+        "description": { "type": "string" },
+        "careGuide": { "type": "object" },
+        "fertilizerTimeline": { "type": "array" }
+      },
+      "required": ["id", "ownerId", "name", "species"]
+    },
+    "CareSchedule": {
+      "title": "CareSchedule",
+      "description": "Recurring care reminders for a plant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "plantId": { "type": "string" },
+        "type": { "type": "string", "enum": ["watering", "fertilizing", "repotting", "pruning"] },
+        "frequency": { "type": "string" },
+        "nextDate": { "type": "string", "format": "date-time" },
+        "reminderEnabled": { "type": "boolean" }
+      },
+      "required": ["id", "plantId", "type", "nextDate"]
+    },
+    "FertilizerLog": {
+      "title": "FertilizerLog",
+      "description": "History of fertilizer applications",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "plantId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "fertilizerName": { "type": "string" },
+        "quantity": { "type": "string" },
+        "status": { "type": "string", "enum": ["applied", "skipped", "snoozed"] }
+      },
+      "required": ["id", "plantId", "date"]
+    },
+    "WateringLog": {
+      "title": "WateringLog",
+      "description": "History of watering events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "plantId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "plantId", "date"]
+    },
+    "HealthIssue": {
+      "title": "HealthIssue",
+      "description": "Logged health problems for a plant",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "plantId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "issueType": { "type": "string" },
+        "description": { "type": "string" },
+        "possibleCause": { "type": "string" },
+        "suggestedSolution": { "type": "string" },
+        "status": { "type": "string", "enum": ["resolved", "ongoing"] }
+      },
+      "required": ["id", "plantId", "date", "issueType"]
+    },
+    "TimelineEvent": {
+      "title": "TimelineEvent",
+      "description": "Milestones and events in a plant's life",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "plantId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "type": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "plantId", "date", "type"]
+    },
+    "AIInsight": {
+      "title": "AIInsight",
+      "description": "AI generated predictions and tips",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "plantId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["prediction", "tip", "alert"] },
+        "content": { "type": "string" }
+      },
+      "required": ["id", "plantId", "date", "type", "content"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/plants/{plantId}": {
+      "schema": "Plant",
+      "description": "Plant profiles"
+    },
+    "/plants/{plantId}/schedules/{scheduleId}": {
+      "schema": "CareSchedule",
+      "description": "Care schedules for a plant"
+    },
+    "/plants/{plantId}/fertilizerLogs/{logId}": {
+      "schema": "FertilizerLog",
+      "description": "Fertilizer history"
+    },
+    "/plants/{plantId}/wateringLogs/{logId}": {
+      "schema": "WateringLog",
+      "description": "Watering history"
+    },
+    "/plants/{plantId}/healthIssues/{issueId}": {
+      "schema": "HealthIssue",
+      "description": "Health issue logs"
+    },
+    "/plants/{plantId}/timeline/{eventId}": {
+      "schema": "TimelineEvent",
+      "description": "Plant growth timeline"
+    },
+    "/plants/{plantId}/insights/{insightId}": {
+      "schema": "AIInsight",
+      "description": "AI generated insights"
+    }
+  }
+}

@@ -1,0 +1,68 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isPlantOwner(plantId) {
+      return isAuthenticated() && (
+        (exists(/databases/$(database)/documents/plants/$(plantId)) && 
+         get(/databases/$(database)/documents/plants/$(plantId)).data.ownerId == request.auth.uid) ||
+        (request.resource != null && request.resource.data.ownerId == request.auth.uid)
+      );
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email']) &&
+             data.uid is string &&
+             data.email is string;
+    }
+
+    function isValidPlant(data) {
+      return data.keys().hasAll(['ownerId', 'name', 'species']) &&
+             data.ownerId == request.auth.uid &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.species is string && data.species.size() > 0;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId) && (request.method != 'create' || isValidUser(request.resource.data));
+    }
+
+    match /plants/{plantId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+      allow create: if isAuthenticated() && isValidPlant(request.resource.data);
+
+      match /schedules/{scheduleId} {
+        allow read, write: if isPlantOwner(plantId);
+      }
+      match /fertilizerLogs/{logId} {
+        allow read, write: if isPlantOwner(plantId);
+      }
+      match /wateringLogs/{logId} {
+        allow read, write: if isPlantOwner(plantId);
+      }
+      match /healthIssues/{issueId} {
+        allow read, write: if isPlantOwner(plantId);
+      }
+      match /timeline/{eventId} {
+        allow read, write: if isPlantOwner(plantId);
+      }
+      match /insights/{insightId} {
+        allow read, write: if isPlantOwner(plantId);
+      }
+    }
+  }
+}

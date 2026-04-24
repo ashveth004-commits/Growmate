@@ -81,6 +81,8 @@ export default function PlantProfile() {
   const [reminderForm, setReminderForm] = useState({
     type: 'watering' as CareSchedule['type'],
     frequency: 'Weekly',
+    customFrequencyValue: '1',
+    customFrequencyUnit: 'days',
     nextDate: new Date().toISOString().split('T')[0],
     reminderEnabled: true
   });
@@ -351,21 +353,29 @@ export default function PlantProfile() {
     if (!id) return;
     setSavingReminder(true);
     try {
+      const finalFrequency = reminderForm.frequency === 'Custom' 
+        ? `Every ${reminderForm.customFrequencyValue} ${reminderForm.customFrequencyUnit}`
+        : reminderForm.frequency;
+
       const reminderData = {
         plantId: id,
-        ...reminderForm,
+        type: reminderForm.type,
+        frequency: finalFrequency,
+        reminderEnabled: reminderForm.reminderEnabled,
         nextDate: new Date(reminderForm.nextDate).toISOString()
       };
       await addDoc(collection(db, `plants/${id}/schedules`), reminderData);
       await addDoc(collection(db, `plants/${id}/timeline`), {
         date: new Date().toISOString(),
         type: 'Reminder Added',
-        description: `Added ${reminderForm.type} reminder: ${reminderForm.frequency}, next on ${reminderForm.nextDate}`
+        description: `Added ${reminderForm.type} reminder: ${finalFrequency}, next on ${reminderForm.nextDate}`
       });
       setShowReminderForm(false);
       setReminderForm({
         type: 'watering',
         frequency: 'Weekly',
+        customFrequencyValue: '1',
+        customFrequencyUnit: 'days',
         nextDate: new Date().toISOString().split('T')[0],
         reminderEnabled: true
       });
@@ -1022,7 +1032,10 @@ export default function PlantProfile() {
                         <option value="pruning">Pruning</option>
                       </select>
                     </div>
-                    <div className="space-y-2">
+                    <div className={cn(
+                      "space-y-2",
+                      reminderForm.frequency === 'Custom' ? "md:col-span-1" : "md:col-span-1"
+                    )}>
                       <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Frequency</label>
                       <select 
                         className="w-full px-4 py-3 rounded-2xl bg-white border border-stone-200 focus:border-green-500 outline-none transition-all text-sm font-bold"
@@ -1037,7 +1050,39 @@ export default function PlantProfile() {
                         <option value="Custom">Custom</option>
                       </select>
                     </div>
-                    <div className="space-y-2">
+
+                    {reminderForm.frequency === 'Custom' && (
+                      <div className="md:col-span-1 space-y-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Every</label>
+                        <div className="flex gap-2">
+                          <div className="flex-1">
+                            <input 
+                              type="number"
+                              min="1"
+                              className="w-full px-4 py-3 rounded-2xl bg-white border border-stone-200 focus:border-green-500 outline-none transition-all text-sm font-bold"
+                              value={reminderForm.customFrequencyValue}
+                              onChange={(e) => setReminderForm(prev => ({ ...prev, customFrequencyValue: e.target.value }))}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <select 
+                              className="w-full px-4 py-3 rounded-2xl bg-white border border-stone-200 focus:border-green-500 outline-none transition-all text-sm font-bold"
+                              value={reminderForm.customFrequencyUnit}
+                              onChange={(e) => setReminderForm(prev => ({ ...prev, customFrequencyUnit: e.target.value }))}
+                            >
+                              <option value="days">Days</option>
+                              <option value="weeks">Weeks</option>
+                              <option value="months">Months</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className={cn(
+                      "space-y-2",
+                      reminderForm.frequency === 'Custom' ? "md:col-span-1" : "md:col-span-1"
+                    )}>
                       <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Starting On</label>
                       <input 
                         type="date"
@@ -1047,14 +1092,19 @@ export default function PlantProfile() {
                         onChange={(e) => setReminderForm(prev => ({ ...prev, nextDate: e.target.value }))}
                       />
                     </div>
-                    <button 
-                      type="submit"
-                      disabled={savingReminder}
-                      className="bg-stone-900 text-white py-3 rounded-2xl font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-                    >
-                      {savingReminder ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-                      Save Reminder
-                    </button>
+                    <div className={cn(
+                      "flex items-end",
+                      reminderForm.frequency === 'Custom' ? "md:col-span-4 mt-2" : "md:col-span-1"
+                    )}>
+                      <button 
+                        type="submit"
+                        disabled={savingReminder}
+                        className="w-full bg-stone-900 text-white py-3 rounded-2xl font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                      >
+                        {savingReminder ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                        Save Reminder
+                      </button>
+                    </div>
                   </form>
                 </div>
               )}

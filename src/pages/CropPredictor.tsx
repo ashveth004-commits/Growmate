@@ -4,11 +4,14 @@ import { predictCropYield } from '../services/geminiService';
 import { CropPredictionInput, CropPredictionResult } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import { useTranslation } from '../context/LanguageContext';
 
 export default function CropPredictor() {
   const [loading, setLoading] = useState(false);
   const [weather, setWeather] = useState<any>(null);
+  const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [result, setResult] = useState<CropPredictionResult | null>(null);
+  const { t } = useTranslation();
   const [formData, setFormData] = useState<CropPredictionInput>({
     landSize: 1,
     landUnit: 'acres',
@@ -32,8 +35,10 @@ export default function CropPredictor() {
           });
           latitude = position.coords.latitude;
           longitude = position.coords.longitude;
+          setLocation({ lat: latitude, lng: longitude });
         } catch (locationErr) {
           console.warn('Geolocation failed, using fallback location:', locationErr);
+          setLocation({ lat: latitude, lng: longitude }); // Fallback
         }
 
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto`;
@@ -57,7 +62,7 @@ export default function CropPredictor() {
     e.preventDefault();
     setLoading(true);
     try {
-      const prediction = await predictCropYield(formData, weather);
+      const prediction = await predictCropYield(formData, weather, location);
       setResult(prediction);
     } catch (error) {
       console.error('Prediction error:', error);
@@ -69,8 +74,8 @@ export default function CropPredictor() {
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <header>
-        <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Crop Yield Predictor</h1>
-        <p className="text-stone-500 mt-1">Estimate your harvest and profit potential using AI and real-time weather data.</p>
+        <h1 className="text-3xl font-bold text-stone-900 tracking-tight">{t('crop_yield_predictor_title')}</h1>
+        <p className="text-stone-50 mt-1">{t('crop_predictor_desc')}</p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -82,7 +87,7 @@ export default function CropPredictor() {
         >
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
-              <label className="text-sm font-bold text-stone-700 ml-1">Crop Type</label>
+              <label className="text-sm font-bold text-stone-700 ml-1">{t('crop_type')}</label>
               <div className="relative">
                 <Sprout className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
                 <input
@@ -98,7 +103,7 @@ export default function CropPredictor() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-sm font-bold text-stone-700 ml-1">Land Size</label>
+                <label className="text-sm font-bold text-stone-700 ml-1">{t('land_size')}</label>
                 <div className="relative">
                   <Map className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
                   <input
@@ -112,7 +117,7 @@ export default function CropPredictor() {
                 </div>
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-bold text-stone-700 ml-1">Unit</label>
+                <label className="text-sm font-bold text-stone-700 ml-1">{t('unit')}</label>
                 <select
                   className="w-full px-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all outline-none bg-white"
                   value={formData.landUnit}
@@ -128,7 +133,7 @@ export default function CropPredictor() {
             <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100 flex items-start gap-3">
               <Cloud className="w-5 h-5 text-blue-500 mt-0.5" />
               <div>
-                <p className="text-xs font-bold text-stone-900 uppercase tracking-wider">Weather Context</p>
+                <p className="text-xs font-bold text-stone-900 uppercase tracking-wider">{t('weather_context')}</p>
                 <p className="text-xs text-stone-500 leading-relaxed">
                   {weather 
                     ? `Current: ${weather.temperature_2m}°C, ${weather.relative_humidity_2m}% Humidity. This will be used to refine the prediction.`
@@ -145,12 +150,12 @@ export default function CropPredictor() {
               {loading ? (
                 <>
                   <Loader2 className="w-6 h-6 animate-spin" />
-                  Calculating Prediction...
+                  {t('calculating_prediction')}
                 </>
               ) : (
                 <>
                   <Sparkles className="w-6 h-6" />
-                  Predict Yield & Profit
+                  {t('predict_btn')}
                 </>
               )}
             </button>
@@ -171,7 +176,7 @@ export default function CropPredictor() {
                 <div className="bg-white w-16 h-16 rounded-2xl flex items-center justify-center shadow-sm mb-4">
                   <TrendingUp className="text-stone-300 w-8 h-8" />
                 </div>
-                <h3 className="text-lg font-bold text-stone-900 mb-2">Ready to Analyze</h3>
+                <h3 className="text-lg font-bold text-stone-900 mb-2">{t('ready_to_analyze')}</h3>
                 <p className="text-stone-500 text-sm max-w-xs">
                   Fill in your land details and crop type to see AI-powered yield and profit estimations.
                 </p>
@@ -189,7 +194,7 @@ export default function CropPredictor() {
                     <div className="bg-white/20 p-2 rounded-xl">
                       <Sprout className="w-6 h-6" />
                     </div>
-                    <span className="font-bold uppercase tracking-widest text-xs text-green-100">Expected Yield</span>
+                    <span className="font-bold uppercase tracking-widest text-xs text-green-100">{t('expected_yield')}</span>
                   </div>
                   <div className="text-5xl font-black mb-2">{result.expectedYield}</div>
                   <p className="text-green-50 text-sm leading-relaxed opacity-90">
@@ -203,18 +208,28 @@ export default function CropPredictor() {
                     <div className="bg-stone-100 p-2 rounded-xl">
                       <DollarSign className="w-6 h-6 text-stone-900" />
                     </div>
-                    <span className="font-bold uppercase tracking-widest text-xs text-stone-500">Profit Estimation</span>
+                    <span className="font-bold uppercase tracking-widest text-xs text-stone-500">{t('profit_estimation_label')}</span>
                   </div>
                   
                   <div className="grid grid-cols-2 gap-8 mb-8">
                     <div>
-                      <p className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">Est. Revenue</p>
-                      <p className="text-2xl font-bold text-stone-900">${result.estimatedRevenue.toLocaleString()}</p>
+                      <p className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">{t('est_revenue')}</p>
+                      <p className="text-2xl font-bold text-stone-900">{result.currencySymbol}{result.estimatedRevenue.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">Est. Costs</p>
-                      <p className="text-2xl font-bold text-stone-900">${result.estimatedCosts.toLocaleString()}</p>
+                      <p className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">{t('est_costs')}</p>
+                      <p className="text-2xl font-bold text-stone-900">{result.currencySymbol}{result.estimatedCosts.toLocaleString()}</p>
                     </div>
+                  </div>
+
+                  <div className="mb-8 p-6 bg-stone-900 rounded-2xl text-white">
+                    <p className="text-xs font-bold text-stone-400 uppercase tracking-wider mb-1">Estimated Net Profit</p>
+                    <p className={cn(
+                      "text-3xl font-black",
+                      (result.estimatedRevenue - result.estimatedCosts) >= 0 ? "text-green-400" : "text-red-400"
+                    )}>
+                      {result.currencySymbol}{(result.estimatedRevenue - result.estimatedCosts).toLocaleString()}
+                    </p>
                   </div>
 
                   <div className="bg-stone-50 p-4 rounded-2xl border border-stone-100">
@@ -229,7 +244,7 @@ export default function CropPredictor() {
                   <div className="bg-white rounded-3xl border border-stone-100 p-6">
                     <h4 className="text-sm font-bold text-stone-900 mb-4 flex items-center gap-2">
                       <Info className="w-4 h-4 text-blue-500" />
-                      Key Factors
+                      {t('key_factors')}
                     </h4>
                     <ul className="space-y-2">
                       {result.factors.map((factor, i) => (
@@ -243,7 +258,7 @@ export default function CropPredictor() {
                   <div className="bg-white rounded-3xl border border-stone-100 p-6">
                     <h4 className="text-sm font-bold text-stone-900 mb-4 flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-orange-500" />
-                      AI Recommendations
+                      {t('ai_recommendations')}
                     </h4>
                     <ul className="space-y-2">
                       {result.recommendations.map((rec, i) => (

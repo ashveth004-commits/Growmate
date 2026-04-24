@@ -134,6 +134,7 @@ export interface CropPredictionResult {
   expectedYieldValue: number;
   yieldUnit: string;
   profitEstimation: string;
+  currencySymbol: string;
   estimatedRevenue: number;
   estimatedCosts: number;
   factors: string[];

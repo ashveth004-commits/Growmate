@@ -144,21 +144,25 @@ export async function generateWeatherSuggestions(weather: any, plants: Plant[]) 
   return JSON.parse(response.text || "{}");
 }
 
-export async function predictCropYield(input: any, weather: any) {
+export async function predictCropYield(input: any, weather: any, location: { lat: number, lng: number } | null) {
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `Predict the crop yield and profit for the following parameters:
     - Land Size: ${input.landSize} ${input.landUnit}
     - Crop Type: ${input.cropType}
-    - Current Weather Context: ${JSON.stringify(weather)}
+    - Location: ${location ? `Latitude ${location.lat}, Longitude ${location.lng}` : 'Unknown'}
+    - Current Weather: ${JSON.stringify(weather)}
+    
+    CRITICAL: Provide realistic data based on the geographical location if known. If the location is in India, use INR (₹) as the primary currency context, otherwise use USD ($).
     
     Provide a detailed prediction in JSON format:
     - expectedYield: string (e.g. "150-200 kg")
     - expectedYieldValue: number (the mean value)
     - yieldUnit: string (e.g. "kg")
     - profitEstimation: string (a summary of profit potential)
-    - estimatedRevenue: number (in USD)
-    - estimatedCosts: number (in USD)
+    - currencySymbol: string (e.g. "₹" or "$")
+    - estimatedRevenue: number (total revenue value)
+    - estimatedCosts: number (total costs value)
     - factors: string[] (list of factors affecting this prediction like soil, weather, etc.)
     - recommendations: string[] (list of actionable steps to maximize yield)`,
     config: {
@@ -170,12 +174,13 @@ export async function predictCropYield(input: any, weather: any) {
           expectedYieldValue: { type: Type.NUMBER },
           yieldUnit: { type: Type.STRING },
           profitEstimation: { type: Type.STRING },
+          currencySymbol: { type: Type.STRING },
           estimatedRevenue: { type: Type.NUMBER },
           estimatedCosts: { type: Type.NUMBER },
           factors: { type: Type.ARRAY, items: { type: Type.STRING } },
           recommendations: { type: Type.ARRAY, items: { type: Type.STRING } }
         },
-        required: ["expectedYield", "expectedYieldValue", "yieldUnit", "profitEstimation", "estimatedRevenue", "estimatedCosts", "factors", "recommendations"]
+        required: ["expectedYield", "expectedYieldValue", "yieldUnit", "profitEstimation", "currencySymbol", "estimatedRevenue", "estimatedCosts", "factors", "recommendations"]
       }
     }
   });

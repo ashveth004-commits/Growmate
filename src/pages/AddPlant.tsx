@@ -20,7 +20,9 @@ export default function AddPlant() {
     isIndoor: true,
     plantationDate: new Date().toISOString().split('T')[0],
     location: '',
-    potSize: ''
+    potSize: '',
+    description: '',
+    expectedLifespan: ''
   });
   const [careGuide, setCareGuide] = useState({
     watering: '',
@@ -40,8 +42,12 @@ export default function AddPlant() {
       if (aiProfile.careGuide) {
         setCareGuide(aiProfile.careGuide);
       }
-      // We could also store the rest of the AI profile in a ref or state for submission
-      setFormData(prev => ({ ...prev, ...aiProfile }));
+      setFormData(prev => ({ 
+        ...prev, 
+        description: aiProfile.description || '',
+        expectedLifespan: aiProfile.expectedLifespan || '',
+        ...aiProfile 
+      }));
     } catch (error) {
       console.error('Error generating AI profile:', error);
     } finally {
@@ -80,30 +86,33 @@ export default function AddPlant() {
         console.warn('Firebase Storage is not available. Skipping image upload.');
       }
 
-      // 2. Generate/Refine AI Profile
-      // If user hasn't clicked "Auto-fill", we fetch it now
-      let aiProfile: any = (formData as any).expectedLifespan ? { ...formData } : null;
+      // 2. Prepare Final Data
+      // If user hasn't generated AI profile yet, we do it in the background or use placeholders
+      let aiProfile: any = formData.expectedLifespan ? { ...formData } : null;
       
       if (!aiProfile) {
-        aiProfile = await generatePlantProfile(formData.species, formData.plantationDate);
+        try {
+          aiProfile = await generatePlantProfile(formData.species, formData.plantationDate);
+        } catch (e) {
+          console.warn("AI profile generation failed, using defaults");
+          aiProfile = { careGuide: {} };
+        }
       }
 
       // 3. Merge values correctly
-      // We want to use values from aiProfile, BUT if careGuide has manual edits, use those.
-      // A manual edit is considered if the string is NOT empty.
-      const finalCareGuide = { ...(aiProfile?.careGuide || {}) };
-      (Object.keys(careGuide) as Array<keyof typeof careGuide>).forEach(key => {
-        if (careGuide[key].trim() !== '') {
-          finalCareGuide[key] = careGuide[key];
-        }
-      });
+      const finalCareGuide = { 
+        ...(aiProfile?.careGuide || {}),
+        ...Object.fromEntries(
+          Object.entries(careGuide).filter(([_, v]) => v.trim() !== '')
+        )
+      };
 
       // 4. Save to Firestore
       const plantData = {
         ...formData,
+        ...aiProfile,
         ownerId: userId,
         createdAt: serverTimestamp(),
-        ...aiProfile,
         careGuide: finalCareGuide,
         photoUrl,
         healthStatus: 'Healthy',
@@ -246,6 +255,40 @@ export default function AddPlant() {
                 />
               </div>
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-stone-700 ml-1">Expected Lifespan</label>
+              <input
+                type="text"
+                placeholder="e.g. 5-10 years"
+                className="w-full px-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all outline-none"
+                value={formData.expectedLifespan}
+                onChange={(e) => setFormData({ ...formData, expectedLifespan: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-bold text-stone-700 ml-1">Pot Size / Type</label>
+              <input
+                type="text"
+                placeholder="e.g. 10 inch ceramic"
+                className="w-full px-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all outline-none"
+                value={formData.potSize}
+                onChange={(e) => setFormData({ ...formData, potSize: e.target.value })}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold text-stone-700 ml-1">Description</label>
+            <textarea
+              rows={3}
+              placeholder="Tell us a bit about this plant..."
+              className="w-full px-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all outline-none resize-none"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+            />
           </div>
 
           <div className="space-y-4">

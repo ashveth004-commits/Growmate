@@ -4,9 +4,10 @@ import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User 
 import { auth, db } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { UserProfile } from './types';
-import { Leaf, LayoutDashboard, Calendar as CalendarIcon, User as UserIcon, Plus, LogOut, MessageCircle, TrendingUp, ShoppingBag } from 'lucide-react';
+import { Leaf, LayoutDashboard, Calendar as CalendarIcon, User as UserIcon, Plus, LogOut, MessageCircle, TrendingUp, ShoppingBag, Video, Languages } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
+import { LanguageProvider, useTranslation } from './context/LanguageContext';
 
 // Pages (to be created)
 import Dashboard from './pages/Dashboard';
@@ -18,6 +19,7 @@ import Login from './pages/Login';
 import CropPredictor from './pages/CropPredictor';
 import Marketplace from './pages/Marketplace';
 import FarmerGPT from './pages/FarmerGPT';
+import PlantationGuide from './pages/PlantationGuide';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -46,6 +48,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 function Layout({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const [user, setUser] = useState<User | null>(null);
+  const { t, language, setLanguage } = useTranslation();
   const isGuest = localStorage.getItem('isGuest') === 'true';
 
   useEffect(() => {
@@ -69,6 +72,14 @@ function Layout({ children }: { children: React.ReactNode }) {
   const displayName = displayUser?.displayName || displayUser?.phoneNumber || 'User';
   const displayEmail = displayUser?.email || (displayUser?.phoneNumber ? 'Phone Verified' : '');
 
+  const languages = [
+    { code: 'en', name: 'English' },
+    { code: 'hi', name: 'हिन्दी' },
+    { code: 'mr', name: 'मराठी' },
+    { code: 'ta', name: 'தமிழ்' },
+    { code: 'te', name: 'తెలుగు' }
+  ] as const;
+
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col md:flex-row">
       {/* Sidebar */}
@@ -80,39 +91,68 @@ function Layout({ children }: { children: React.ReactNode }) {
           <h1 className="text-xl font-bold text-stone-900 tracking-tight">GrowMate</h1>
         </div>
 
-        <nav className="flex-1 px-4 space-y-1">
+        <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
           <Link to="/" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
             <LayoutDashboard className="w-5 h-5" />
-            Dashboard
+            {t('dashboard')}
           </Link>
           <Link to="/farmer-gpt" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
             <MessageCircle className="w-5 h-5 text-green-600" />
-            Farmer GPT
+            {t('farmer_gpt')}
+          </Link>
+          <Link to="/guide" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
+            <Video className="w-5 h-5" />
+            {t('plantation_guide')}
           </Link>
           <Link to="/calendar" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
             <CalendarIcon className="w-5 h-5" />
-            Calendar
+            {t('calendar')}
           </Link>
           <Link to="/crop-predictor" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
             <TrendingUp className="w-5 h-5" />
-            Crop Predictor
+            {t('crop_predictor')}
           </Link>
           <Link to="/marketplace" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
             <ShoppingBag className="w-5 h-5" />
-            Marketplace
+            {t('marketplace')}
           </Link>
           <Link to="/add-plant" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
             <Plus className="w-5 h-5" />
-            Add Plant
+            {t('add_plant')}
           </Link>
           <Link to="/profile" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
             <UserIcon className="w-5 h-5" />
-            Profile
+            {t('profile')}
           </Link>
         </nav>
 
-        <div className="p-4 border-t border-stone-100">
-          <div className="flex items-center gap-3 px-4 py-3 mb-2">
+        <div className="p-4 space-y-4 border-t border-stone-100">
+          {/* Language Selector */}
+          <div className="px-4">
+            <div className="flex items-center gap-2 mb-2 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
+              <Languages className="w-3 h-3" />
+              {t('language')}
+            </div>
+            <div className="grid grid-cols-5 gap-1">
+              {languages.map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => setLanguage(lang.code)}
+                  className={cn(
+                    "py-2 rounded-lg text-xs font-bold transition-all border",
+                    language === lang.code 
+                      ? "bg-green-600 text-white border-green-600 shadow-md" 
+                      : "bg-white text-stone-600 border-stone-200 hover:bg-stone-50"
+                  )}
+                  title={lang.name}
+                >
+                  {lang.code.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 px-4 py-3">
             <img src={displayUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayUser?.uid}`} alt="Avatar" className="w-8 h-8 rounded-full border border-stone-200" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-stone-900 truncate">{displayName}</p>
@@ -121,9 +161,9 @@ function Layout({ children }: { children: React.ReactNode }) {
           </div>
           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all font-medium">
             <LogOut className="w-5 h-5" />
-            Logout
+            {t('logout')}
           </button>
-          <p className="mt-4 text-[10px] font-bold text-stone-300 uppercase tracking-[0.2em] text-center">
+          <p className="text-[10px] font-bold text-stone-300 uppercase tracking-[0.2em] text-center">
             an ashveth creation
           </p>
         </div>
@@ -141,18 +181,21 @@ function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
-        <Route path="/add-plant" element={<ProtectedRoute><Layout><AddPlant /></Layout></ProtectedRoute>} />
-        <Route path="/plant/:id" element={<ProtectedRoute><Layout><PlantProfile /></Layout></ProtectedRoute>} />
-        <Route path="/calendar" element={<ProtectedRoute><Layout><Calendar /></Layout></ProtectedRoute>} />
-        <Route path="/crop-predictor" element={<ProtectedRoute><Layout><CropPredictor /></Layout></ProtectedRoute>} />
-        <Route path="/marketplace" element={<ProtectedRoute><Layout><Marketplace /></Layout></ProtectedRoute>} />
-        <Route path="/farmer-gpt" element={<ProtectedRoute><Layout><FarmerGPT /></Layout></ProtectedRoute>} />
-        <Route path="/profile" element={<ProtectedRoute><Layout><Profile /></Layout></ProtectedRoute>} />
-      </Routes>
-    </BrowserRouter>
+    <LanguageProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
+          <Route path="/add-plant" element={<ProtectedRoute><Layout><AddPlant /></Layout></ProtectedRoute>} />
+          <Route path="/plant/:id" element={<ProtectedRoute><Layout><PlantProfile /></Layout></ProtectedRoute>} />
+          <Route path="/calendar" element={<ProtectedRoute><Layout><Calendar /></Layout></ProtectedRoute>} />
+          <Route path="/crop-predictor" element={<ProtectedRoute><Layout><CropPredictor /></Layout></ProtectedRoute>} />
+          <Route path="/marketplace" element={<ProtectedRoute><Layout><Marketplace /></Layout></ProtectedRoute>} />
+          <Route path="/farmer-gpt" element={<ProtectedRoute><Layout><FarmerGPT /></Layout></ProtectedRoute>} />
+          <Route path="/guide" element={<ProtectedRoute><Layout><PlantationGuide /></Layout></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><Layout><Profile /></Layout></ProtectedRoute>} />
+        </Routes>
+      </BrowserRouter>
+    </LanguageProvider>
   );
 }

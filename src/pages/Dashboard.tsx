@@ -7,11 +7,13 @@ import { Leaf, Droplets, Thermometer, Sun, Plus, ChevronRight, AlertCircle, Cale
 import { motion } from 'motion/react';
 import { format, isAfter, parseISO } from 'date-fns';
 import WeatherAlerts from '../components/WeatherAlerts';
+import { useTranslation } from '../context/LanguageContext';
 
 export default function Dashboard() {
   const [plants, setPlants] = useState<Plant[]>([]);
   const [schedules, setSchedules] = useState<CareSchedule[]>([]);
   const [loading, setLoading] = useState(true);
+  const { t } = useTranslation();
 
   useEffect(() => {
     const isGuest = localStorage.getItem('isGuest') === 'true';
@@ -47,13 +49,13 @@ export default function Dashboard() {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-stone-900 tracking-tight">
-            Welcome back, {(auth.currentUser?.displayName || (localStorage.getItem('isGuest') === 'true' ? 'Guest' : 'User'))?.split(' ')[0]}!
+            {t('welcome_back_user')}, {(auth.currentUser?.displayName || (localStorage.getItem('isGuest') === 'true' ? 'Guest' : 'User'))?.split(' ')[0]}!
           </h1>
-          <p className="text-stone-500 mt-1">You have {plants.length} plants in your care.</p>
+          <p className="text-stone-500 mt-1">{t('plants_count').replace('{count}', plants.length.toString())}</p>
         </div>
         <Link to="/add-plant" className="inline-flex items-center gap-2 bg-green-600 text-white px-6 py-3 rounded-2xl font-semibold hover:bg-green-700 transition-all shadow-lg shadow-green-100">
           <Plus className="w-5 h-5" />
-          Add New Plant
+          {t('add_plant')}
         </Link>
       </header>
 
@@ -63,8 +65,8 @@ export default function Dashboard() {
         {/* Plants Grid */}
         <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-stone-900">My Plants</h2>
-            <Link to="/add-plant" className="text-green-600 text-sm font-semibold hover:underline">View All</Link>
+            <h2 className="text-xl font-bold text-stone-900">{t('my_plants')}</h2>
+            <Link to="/add-plant" className="text-green-600 text-sm font-semibold hover:underline">{t('view_all')}</Link>
           </div>
 
           {plants.length === 0 ? (
@@ -72,20 +74,20 @@ export default function Dashboard() {
               <div className="bg-stone-50 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <Leaf className="text-stone-300 w-8 h-8" />
               </div>
-              <h3 className="text-lg font-bold text-stone-900 mb-2">No plants yet</h3>
-              <p className="text-stone-500 mb-6 max-w-xs mx-auto">Start your digital garden by adding your first plant today.</p>
+              <h3 className="text-lg font-bold text-stone-900 mb-2">{t('no_plants_yet')}</h3>
+              <p className="text-stone-500 mb-6 max-w-xs mx-auto">{t('start_garden_msg')}</p>
               <Link to="/add-plant" className="inline-flex items-center gap-2 bg-stone-900 text-white px-6 py-3 rounded-2xl font-semibold hover:bg-stone-800 transition-all">
                 <Plus className="w-5 h-5" />
-                Add Your First Plant
+                {t('add_first_plant')}
               </Link>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {plants.map((plant) => (
                 <motion.div
-                  key={plant.id}
-                  whileHover={{ y: -4 }}
-                  className="bg-white rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-all p-4 group"
+                   key={plant.id}
+                   whileHover={{ y: -4 }}
+                   className="bg-white rounded-3xl border border-stone-100 shadow-sm hover:shadow-md transition-all p-4 group"
                 >
                   <Link to={`/plant/${plant.id}`} className="flex gap-4">
                     <div className="w-24 h-24 rounded-2xl overflow-hidden bg-stone-100 flex-shrink-0">
@@ -124,7 +126,7 @@ export default function Dashboard() {
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-bold text-stone-900 flex items-center gap-2">
                 <Clock className="w-5 h-5 text-green-600" />
-                Upcoming Care
+                {t('upcoming_care')}
               </h2>
               <Link to="/calendar" className="text-stone-400 hover:text-stone-600 transition-colors">
                 <CalendarIcon className="w-5 h-5" />
@@ -155,18 +157,18 @@ export default function Dashboard() {
               </div>
 
               <button className="w-full py-3 text-stone-500 text-sm font-semibold hover:text-stone-900 transition-colors border-t border-stone-50 mt-2">
-                View All Reminders
+                {t('view_all')}
               </button>
             </div>
           </section>
 
           <section className="bg-green-600 rounded-3xl p-6 text-white shadow-lg shadow-green-100">
-            <h3 className="font-bold text-lg mb-2">AI Seasonal Tip</h3>
+            <h3 className="font-bold text-lg mb-2">{t('ai_seasonal_tip')}</h3>
             <p className="text-green-50 text-sm leading-relaxed mb-4">
               Spring is coming! It's the perfect time to start repotting your indoor plants to give them fresh nutrients for the growing season.
             </p>
             <button className="bg-white/20 hover:bg-white/30 transition-colors px-4 py-2 rounded-xl text-sm font-semibold">
-              Learn More
+              {t('learn_more')}
             </button>
           </section>
         </div>

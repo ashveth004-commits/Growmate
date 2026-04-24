@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import VoiceInput from '../components/VoiceInput';
 import { getFarmerGPTResponse } from '../services/geminiService';
+import { useTranslation } from '../context/LanguageContext';
 
 interface Message {
   id: string;
@@ -18,6 +19,7 @@ export default function FarmerGPT() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (chatContainerRef.current) {
@@ -77,17 +79,17 @@ export default function FarmerGPT() {
             <Bot className="w-7 h-7" />
           </div>
           <div>
-            <h1 className="text-xl font-black text-stone-900 tracking-tight">Farmer GPT</h1>
+            <h1 className="text-xl font-black text-stone-900 tracking-tight">{t('farmer_gpt')}</h1>
             <p className="text-xs font-bold text-green-600 flex items-center gap-1">
               <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              AI Agriculture Expert
+              {t('ai_agri_expert')}
             </p>
           </div>
         </div>
         <button 
           onClick={clearChat}
           className="p-3 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
-          title="Clear Chat"
+          title={t('clear_chat')}
         >
           <Trash2 className="w-5 h-5" />
         </button>
@@ -108,8 +110,8 @@ export default function FarmerGPT() {
               <div className="w-20 h-20 rounded-[2rem] bg-green-50 flex items-center justify-center text-green-600 mb-6">
                 <Sprout className="w-10 h-10" />
               </div>
-              <h2 className="text-2xl font-black text-stone-900 mb-2">How can I help your farm today?</h2>
-              <p className="text-stone-500 font-medium">Ask about crop diseases, fertilizing schedules, or seasonal planting advice.</p>
+              <h2 className="text-2xl font-black text-stone-900 mb-2">{t('how_can_help_farm')}</h2>
+              <p className="text-stone-500 font-medium">{t('gpt_placeholder_msg')}</p>
               
               <div className="grid grid-cols-1 gap-3 w-full mt-8">
                 {[
@@ -174,7 +176,7 @@ export default function FarmerGPT() {
               </div>
               <div className="bg-white border border-stone-100 p-4 rounded-3xl rounded-tl-none shadow-sm flex items-center gap-3">
                 <Loader2 className="w-4 h-4 animate-spin text-green-600" />
-                <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">Farmer GPT is thinking...</span>
+                <span className="text-xs font-bold text-stone-400 uppercase tracking-widest">{t('gpt_thinking')}</span>
               </div>
             </motion.div>
           )}
@@ -186,7 +188,7 @@ export default function FarmerGPT() {
         <div className="flex items-end gap-4 max-w-4xl mx-auto">
           <VoiceInput 
             onResult={(text) => setInput(prev => prev + (prev ? ' ' : '') + text)}
-            placeholder="Speak your query..."
+            placeholder={t('speak_query')}
             className="mb-1"
           />
           <div className="flex-1 relative">
@@ -200,7 +202,7 @@ export default function FarmerGPT() {
                   handleSend();
                 }
               }}
-              placeholder="Ask anything about farming..."
+              placeholder={t('ask_anything_farming')}
               className="w-full bg-stone-50 border border-stone-200 rounded-3xl px-6 py-4 pr-12 text-sm font-semibold text-stone-900 outline-none focus:border-green-500 focus:bg-white transition-all resize-none shadow-inner"
             />
             <button

@@ -17,6 +17,7 @@ import Profile from './pages/Profile';
 import Login from './pages/Login';
 import CropPredictor from './pages/CropPredictor';
 import Marketplace from './pages/Marketplace';
+import FarmerGPT from './pages/FarmerGPT';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -84,6 +85,10 @@ function Layout({ children }: { children: React.ReactNode }) {
             <LayoutDashboard className="w-5 h-5" />
             Dashboard
           </Link>
+          <Link to="/farmer-gpt" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
+            <MessageCircle className="w-5 h-5 text-green-600" />
+            Farmer GPT
+          </Link>
           <Link to="/calendar" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
             <CalendarIcon className="w-5 h-5" />
             Calendar
@@ -145,6 +150,7 @@ export default function App() {
         <Route path="/calendar" element={<ProtectedRoute><Layout><Calendar /></Layout></ProtectedRoute>} />
         <Route path="/crop-predictor" element={<ProtectedRoute><Layout><CropPredictor /></Layout></ProtectedRoute>} />
         <Route path="/marketplace" element={<ProtectedRoute><Layout><Marketplace /></Layout></ProtectedRoute>} />
+        <Route path="/farmer-gpt" element={<ProtectedRoute><Layout><FarmerGPT /></Layout></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Layout><Profile /></Layout></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>

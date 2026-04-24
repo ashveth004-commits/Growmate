@@ -211,3 +211,27 @@ export async function refineFarmerVoiceInput(rawTranscript: string) {
   const data = JSON.parse(response.text || "{}");
   return data.refinedText || rawTranscript;
 }
+
+export async function getFarmerGPTResponse(message: string) {
+  const systemInstruction = `You are Farmer GPT, an expert agricultural consultant with decades of experience in farming, horticulture, and plant science. 
+  Your goal is to help farmers and gardeners with:
+  1. Crop selection based on season and region.
+  2. Soil health and preparation.
+  3. Pest and disease identification and management.
+  4. Irrigation strategies.
+  5. Sustainable and organic farming practices.
+  6. Market trends and agricultural technology.
+  
+  Keep your tone professional, advisory, and respectful of local farming traditions while providing modern scientific insights. 
+  If a question is not about agriculture, gardening, or plants, politely redirect the user back to farming topics.`;
+
+  const chat = ai.chats.create({
+    model: "gemini-3-flash-preview",
+    config: {
+      systemInstruction,
+    }
+  });
+
+  const response = await chat.sendMessage({ message });
+  return response.text;
+}

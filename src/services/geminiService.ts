@@ -1,6 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Plant, CareGuide, FertilizerEvent } from "../types";
 
+// Always initialize with the key from process.env.GEMINI_API_KEY
+// In AI Studio Build, this is automatically provided via define in vite.config.ts
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 export async function generatePlantProfile(species: string, plantationDate: string) {
@@ -93,18 +95,14 @@ export async function getPlantChatResponse(plant: Plant, message: string, histor
   
   Answer the user's questions about this specific plant using the provided context. Be helpful, encouraging, and accurate.`;
 
-  const chat = ai.chats.create({
+  const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
+    contents: message,
     config: {
       systemInstruction,
     }
   });
 
-  // Since chat.sendMessage only accepts message, we might need to handle history differently if needed, 
-  // but for a simple implementation we can just send the message.
-  // If we want history, we'd need to pass it to ai.chats.create if the SDK supports it, or just use generateContent.
-  
-  const response = await chat.sendMessage({ message });
   return response.text;
 }
 
@@ -145,26 +143,31 @@ export async function generateWeatherSuggestions(weather: any, plants: Plant[]) 
 }
 
 export async function predictCropYield(input: any, weather: any, location: { lat: number, lng: number } | null) {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Predict the crop yield and profit for the following parameters:
+  const prompt = `Predict the crop yield and profit potential for the following parameters:
     - Land Size: ${input.landSize} ${input.landUnit}
     - Crop Type: ${input.cropType}
     - Location: ${location ? `Latitude ${location.lat}, Longitude ${location.lng}` : 'Unknown'}
-    - Current Weather: ${JSON.stringify(weather)}
+    - Current Weather Data: ${weather ? JSON.stringify(weather) : 'Unavailable'}
     
-    CRITICAL: Provide realistic data based on the geographical location if known. If the location is in India, use INR (₹) as the primary currency context, otherwise use USD ($).
+    CRITICAL: Provide realistic, region-specific data based on the geographical location if known. 
+    If the location is in India, use INR (₹) as the currency symbol and local market logic. 
+    Otherwise, use USD ($).
     
-    Provide a detailed prediction in JSON format:
-    - expectedYield: string (e.g. "150-200 kg")
-    - expectedYieldValue: number (the mean value)
-    - yieldUnit: string (e.g. "kg")
-    - profitEstimation: string (a summary of profit potential)
+    Ensure all number fields are actual numbers, not strings.
+    The response MUST be a single, valid JSON object following this structure:
+    - expectedYield: string (e.g. "150-200 kg" or "10-12 tons")
+    - expectedYieldValue: number (the numeric representation of the yield mean)
+    - yieldUnit: string (e.g. "kg", "tons", "quintals")
+    - profitEstimation: string (a concise 2-3 sentence summary of profit potential and market outlook)
     - currencySymbol: string (e.g. "₹" or "$")
-    - estimatedRevenue: number (total revenue value)
-    - estimatedCosts: number (total costs value)
-    - factors: string[] (list of factors affecting this prediction like soil, weather, etc.)
-    - recommendations: string[] (list of actionable steps to maximize yield)`,
+    - estimatedRevenue: number (total estimated revenue value)
+    - estimatedCosts: number (total estimated production costs value)
+    - factors: string[] (list 4-5 key factors affecting this prediction)
+    - recommendations: string[] (list 4-5 actionable steps the farmer should take)`;
+
+  const result = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: prompt,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -177,15 +180,38 @@ export async function predictCropYield(input: any, weather: any, location: { lat
           currencySymbol: { type: Type.STRING },
           estimatedRevenue: { type: Type.NUMBER },
           estimatedCosts: { type: Type.NUMBER },
-          factors: { type: Type.ARRAY, items: { type: Type.STRING } },
-          recommendations: { type: Type.ARRAY, items: { type: Type.STRING } }
+          factors: { 
+            type: Type.ARRAY, 
+            items: { type: Type.STRING } 
+          },
+          recommendations: { 
+            type: Type.ARRAY, 
+            items: { type: Type.STRING } 
+          }
         },
-        required: ["expectedYield", "expectedYieldValue", "yieldUnit", "profitEstimation", "currencySymbol", "estimatedRevenue", "estimatedCosts", "factors", "recommendations"]
+        required: [
+          "expectedYield", 
+          "expectedYieldValue", 
+          "yieldUnit", 
+          "profitEstimation", 
+          "currencySymbol", 
+          "estimatedRevenue", 
+          "estimatedCosts", 
+          "factors", 
+          "recommendations"
+        ]
       }
     }
   });
 
-  return JSON.parse(response.text || "{}");
+  try {
+    const text = result.text;
+    if (!text) throw new Error("AI returned empty response");
+    return JSON.parse(text);
+  } catch (err) {
+    console.error("Failed to parse AI response:", result.text);
+    throw new Error("Invalid response from AI");
+  }
 }
 
 export async function refineFarmerVoiceInput(rawTranscript: string) {
@@ -230,13 +256,13 @@ export async function getFarmerGPTResponse(message: string) {
   Keep your tone professional, advisory, and respectful of local farming traditions while providing modern scientific insights. 
   If a question is not about agriculture, gardening, or plants, politely redirect the user back to farming topics.`;
 
-  const chat = ai.chats.create({
+  const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
+    contents: message,
     config: {
       systemInstruction,
     }
   });
 
-  const response = await chat.sendMessage({ message });
   return response.text;
 }

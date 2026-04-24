@@ -11,6 +11,7 @@ export default function CropPredictor() {
   const [weather, setWeather] = useState<any>(null);
   const [location, setLocation] = useState<{ lat: number, lng: number } | null>(null);
   const [result, setResult] = useState<CropPredictionResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { t } = useTranslation();
   const [formData, setFormData] = useState<CropPredictionInput>({
     landSize: 1,
@@ -21,6 +22,7 @@ export default function CropPredictor() {
   useEffect(() => {
     const fetchWeather = async () => {
       try {
+        setError(null);
         setWeather(null);
         
         let latitude = 19.0760; // Default: Mumbai
@@ -38,7 +40,8 @@ export default function CropPredictor() {
           setLocation({ lat: latitude, lng: longitude });
         } catch (locationErr) {
           console.warn('Geolocation failed, using fallback location:', locationErr);
-          setLocation({ lat: latitude, lng: longitude }); // Fallback
+          // Fallback is already set to Mumbai
+          setLocation({ lat: latitude, lng: longitude });
         }
 
         const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto`;
@@ -61,11 +64,13 @@ export default function CropPredictor() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setError(null);
     try {
       const prediction = await predictCropYield(formData, weather, location);
       setResult(prediction);
-    } catch (error) {
-      console.error('Prediction error:', error);
+    } catch (err: any) {
+      console.error('Prediction error:', err);
+      setError('Failed to generate prediction. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -75,7 +80,7 @@ export default function CropPredictor() {
     <div className="max-w-4xl mx-auto space-y-8">
       <header>
         <h1 className="text-3xl font-bold text-stone-900 tracking-tight">{t('crop_yield_predictor_title')}</h1>
-        <p className="text-stone-50 mt-1">{t('crop_predictor_desc')}</p>
+        <p className="text-stone-500 mt-1">{t('crop_predictor_desc')}</p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -86,6 +91,12 @@ export default function CropPredictor() {
           className="bg-white rounded-[2rem] border border-stone-100 shadow-sm p-8 h-fit"
         >
           <form onSubmit={handleSubmit} className="space-y-6">
+            {error && (
+              <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start gap-3 text-red-600 text-sm animate-in fade-in slide-in-from-top-1">
+                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                <p className="font-medium">{error}</p>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-sm font-bold text-stone-700 ml-1">{t('crop_type')}</label>
               <div className="relative">

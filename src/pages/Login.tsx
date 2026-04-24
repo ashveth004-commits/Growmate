@@ -24,16 +24,44 @@ export default function Login() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Hidden recaptcha verifier
-    if (!(window as any).recaptchaVerifier) {
-      (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        'size': 'invisible',
-        'callback': () => {
-          // reCAPTCHA solved, allow signInWithPhoneNumber.
-        }
-      });
+    // Initialize recaptcha verifier
+    let verifier: RecaptchaVerifier | null = null;
+    
+    try {
+      const container = document.getElementById('recaptcha-container');
+      if (container) {
+        verifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          'size': 'invisible',
+          'callback': () => {
+            console.log('reCAPTCHA solved');
+          },
+          'expired-callback': () => {
+            console.log('reCAPTCHA expired');
+          }
+        });
+        
+        (window as any).recaptchaVerifier = verifier;
+        
+        // Render it once to ensure it's ready
+        verifier.render().catch(err => {
+          console.error('Error rendering reCAPTCHA:', err);
+        });
+      }
+    } catch (err) {
+      console.error('Error initializing reCAPTCHA:', err);
     }
-  }, []);
+
+    return () => {
+      if (verifier) {
+        try {
+          verifier.clear();
+          delete (window as any).recaptchaVerifier;
+        } catch (err) {
+          console.error('Error clearing reCAPTCHA:', err);
+        }
+      }
+    };
+  }, [step]); // Re-initialize when step changes to ensure container is fresh if it was affected by DOM changes
 
   const handlePhoneSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,6 +93,8 @@ export default function Login() {
         setError('The phone number format is invalid. Ensure it includes the selected country code and 10 digits.');
       } else if (err.code === 'auth/too-many-requests') {
         setError('Too many attempts. You have been temporarily blocked for security reasons. Try again later.');
+      } else if (err.code === 'auth/unauthorized-domain') {
+        setError(`This domain is not authorized for phone login.\n\nFix: In Firebase Console > Authentication > Settings > Authorized domains, add: ${window.location.hostname}`);
       } else {
         setError(err.message || 'Failed to send OTP.');
       }

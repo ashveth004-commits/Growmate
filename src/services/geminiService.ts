@@ -182,3 +182,32 @@ export async function predictCropYield(input: any, weather: any) {
 
   return JSON.parse(response.text || "{}");
 }
+
+export async function refineFarmerVoiceInput(rawTranscript: string) {
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: `You are an expert agricultural assistant. Your task is to process a farmer's voice-to-text transcript.
+    - Fix all spelling and grammatical errors.
+    - Interpret rural, informal, or regional agricultural terminology correctly (e.g., specific pesticide names, local units, or dialect-specific names for plant diseases).
+    - Convert it into clear, professional, yet simple text.
+    - CRITICAL: Do NOT change the original meaning or intent of the farmer.
+    
+    Raw transcript: "${rawTranscript}"
+    
+    Provide the refined text in JSON format:
+    - refinedText: string`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          refinedText: { type: Type.STRING }
+        },
+        required: ["refinedText"]
+      }
+    }
+  });
+
+  const data = JSON.parse(response.text || "{}");
+  return data.refinedText || rawTranscript;
+}

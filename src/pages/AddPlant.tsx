@@ -7,6 +7,7 @@ import { generatePlantProfile } from '../services/geminiService';
 import { Leaf, MapPin, Calendar as CalendarIcon, Camera, Loader2, Sparkles, X, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
+import VoiceInput from '../components/VoiceInput';
 
 export default function AddPlant() {
   const navigate = useNavigate();
@@ -21,6 +22,32 @@ export default function AddPlant() {
     location: '',
     potSize: ''
   });
+  const [careGuide, setCareGuide] = useState({
+    watering: '',
+    sunlight: '',
+    temperature: '',
+    humidity: '',
+    soil: '',
+    repotting: ''
+  });
+  const [generatingAI, setGeneratingAI] = useState(false);
+
+  const handleGenerateAI = async () => {
+    if (!formData.species) return;
+    setGeneratingAI(true);
+    try {
+      const aiProfile = await generatePlantProfile(formData.species, formData.plantationDate);
+      if (aiProfile.careGuide) {
+        setCareGuide(aiProfile.careGuide);
+      }
+      // We could also store the rest of the AI profile in a ref or state for submission
+      setFormData(prev => ({ ...prev, ...aiProfile }));
+    } catch (error) {
+      console.error('Error generating AI profile:', error);
+    } finally {
+      setGeneratingAI(false);
+    }
+  };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -53,15 +80,31 @@ export default function AddPlant() {
         console.warn('Firebase Storage is not available. Skipping image upload.');
       }
 
-      // 2. Generate AI Profile
-      const aiProfile = await generatePlantProfile(formData.species, formData.plantationDate);
+      // 2. Generate/Refine AI Profile
+      // If user hasn't clicked "Auto-fill", we fetch it now
+      let aiProfile: any = (formData as any).expectedLifespan ? { ...formData } : null;
+      
+      if (!aiProfile) {
+        aiProfile = await generatePlantProfile(formData.species, formData.plantationDate);
+      }
 
-      // 3. Save to Firestore
+      // 3. Merge values correctly
+      // We want to use values from aiProfile, BUT if careGuide has manual edits, use those.
+      // A manual edit is considered if the string is NOT empty.
+      const finalCareGuide = { ...(aiProfile?.careGuide || {}) };
+      (Object.keys(careGuide) as Array<keyof typeof careGuide>).forEach(key => {
+        if (careGuide[key].trim() !== '') {
+          finalCareGuide[key] = careGuide[key];
+        }
+      });
+
+      // 4. Save to Firestore
       const plantData = {
         ...formData,
         ownerId: userId,
         createdAt: serverTimestamp(),
         ...aiProfile,
+        careGuide: finalCareGuide,
         photoUrl,
         healthStatus: 'Healthy',
         age: 'Just started'
@@ -142,7 +185,13 @@ export default function AddPlant() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-2">
-              <label className="text-sm font-bold text-stone-700 ml-1">Plant Name</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-bold text-stone-700 ml-1">Plant Name</label>
+                <VoiceInput 
+                  onResult={(text) => setFormData({ ...formData, name: text })}
+                  placeholder="Say plant name..."
+                />
+              </div>
               <input
                 required
                 type="text"
@@ -153,7 +202,13 @@ export default function AddPlant() {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-bold text-stone-700 ml-1">Species / Type</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-bold text-stone-700 ml-1">Species / Type</label>
+                <VoiceInput 
+                  onResult={(text) => setFormData({ ...formData, species: text })}
+                  placeholder="Say species name..."
+                />
+              </div>
               <input
                 required
                 type="text"
@@ -220,6 +275,55 @@ export default function AddPlant() {
               >
                 Outdoor
               </button>
+            </div>
+          </div>
+
+          <div className="space-y-6 pt-4 border-t border-stone-100">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-bold text-stone-700 ml-1">Care Guide Details</label>
+              <button
+                type="button"
+                onClick={handleGenerateAI}
+                disabled={generatingAI || !formData.species}
+                className="flex items-center gap-2 text-xs font-bold text-green-600 bg-green-50 px-3 py-1.5 rounded-xl hover:bg-green-100 transition-all disabled:opacity-50"
+              >
+                {generatingAI ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3 h-3" />
+                )}
+                Auto-fill with AI
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+              {[
+                { id: 'watering', label: 'Watering', placeholder: 'e.g. Water when top inch of soil is dry.' },
+                { id: 'sunlight', label: 'Sunlight', placeholder: 'e.g. Thrives in bright, indirect sunlight.' },
+                { id: 'temperature', label: 'Temperature', placeholder: 'e.g. Best kept between 18-24°C.' },
+                { id: 'humidity', label: 'Humidity', placeholder: 'e.g. Prefers high humidity (60%+).' },
+                { id: 'soil', label: 'Soil Type', placeholder: 'e.g. Peat-based mix with perlite.' },
+                { id: 'repotting', label: 'Repotting', placeholder: 'e.g. Repot when roots circle the base.' },
+              ].map((field) => (
+                <div key={field.id} className="space-y-1.5 focus-within:z-10 group">
+                  <div className="flex items-center justify-between px-1">
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-focus-within:text-green-600 transition-colors">
+                      {field.label}
+                    </label>
+                    <VoiceInput 
+                      onResult={(text) => setCareGuide(prev => ({ ...prev, [field.id]: prev[field.id as keyof typeof careGuide] + (prev[field.id as keyof typeof careGuide] ? ' ' : '') + text }))}
+                      placeholder={`Speak ${field.label}...`}
+                    />
+                  </div>
+                  <textarea
+                    rows={2}
+                    placeholder={field.placeholder}
+                    className="w-full px-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 focus:ring-4 focus:ring-green-500/10 transition-all outline-none text-sm resize-none scrollbar-hide bg-stone-50/30 focus:bg-white"
+                    value={(careGuide as any)[field.id]}
+                    onChange={(e) => setCareGuide({ ...careGuide, [field.id]: e.target.value })}
+                  />
+                </div>
+              ))}
             </div>
           </div>
 

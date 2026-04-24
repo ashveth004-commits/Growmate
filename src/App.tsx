@@ -4,7 +4,7 @@ import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User 
 import { auth, db } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { UserProfile } from './types';
-import { Leaf, LayoutDashboard, Calendar as CalendarIcon, User as UserIcon, Plus, LogOut, MessageCircle, TrendingUp } from 'lucide-react';
+import { Leaf, LayoutDashboard, Calendar as CalendarIcon, User as UserIcon, Plus, LogOut, MessageCircle, TrendingUp, ShoppingBag } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 
@@ -16,6 +16,7 @@ import Calendar from './pages/Calendar';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
 import CropPredictor from './pages/CropPredictor';
+import Marketplace from './pages/Marketplace';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -60,8 +61,12 @@ function Layout({ children }: { children: React.ReactNode }) {
     displayName: 'Guest User',
     email: 'guest@example.com',
     uid: 'guest-123',
-    photoURL: null
+    photoURL: null,
+    phoneNumber: null
   } : null);
+
+  const displayName = displayUser?.displayName || displayUser?.phoneNumber || 'User';
+  const displayEmail = displayUser?.email || (displayUser?.phoneNumber ? 'Phone Verified' : '');
 
   return (
     <div className="min-h-screen bg-stone-50 flex flex-col md:flex-row">
@@ -87,6 +92,10 @@ function Layout({ children }: { children: React.ReactNode }) {
             <TrendingUp className="w-5 h-5" />
             Crop Predictor
           </Link>
+          <Link to="/marketplace" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
+            <ShoppingBag className="w-5 h-5" />
+            Marketplace
+          </Link>
           <Link to="/add-plant" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
             <Plus className="w-5 h-5" />
             Add Plant
@@ -101,14 +110,17 @@ function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3 px-4 py-3 mb-2">
             <img src={displayUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayUser?.uid}`} alt="Avatar" className="w-8 h-8 rounded-full border border-stone-200" />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-stone-900 truncate">{displayUser?.displayName || 'User'}</p>
-              <p className="text-xs text-stone-500 truncate">{displayUser?.email}</p>
+              <p className="text-sm font-semibold text-stone-900 truncate">{displayName}</p>
+              <p className="text-xs text-stone-500 truncate">{displayEmail}</p>
             </div>
           </div>
           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all font-medium">
             <LogOut className="w-5 h-5" />
             Logout
           </button>
+          <p className="mt-4 text-[10px] font-bold text-stone-300 uppercase tracking-[0.2em] text-center">
+            an ashveth creation
+          </p>
         </div>
       </aside>
 
@@ -132,6 +144,7 @@ export default function App() {
         <Route path="/plant/:id" element={<ProtectedRoute><Layout><PlantProfile /></Layout></ProtectedRoute>} />
         <Route path="/calendar" element={<ProtectedRoute><Layout><Calendar /></Layout></ProtectedRoute>} />
         <Route path="/crop-predictor" element={<ProtectedRoute><Layout><CropPredictor /></Layout></ProtectedRoute>} />
+        <Route path="/marketplace" element={<ProtectedRoute><Layout><Marketplace /></Layout></ProtectedRoute>} />
         <Route path="/profile" element={<ProtectedRoute><Layout><Profile /></Layout></ProtectedRoute>} />
       </Routes>
     </BrowserRouter>

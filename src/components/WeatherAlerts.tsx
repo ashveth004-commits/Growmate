@@ -24,24 +24,49 @@ export default function WeatherAlerts({ plants }: Props) {
     const fetchWeatherAndSuggestions = async () => {
       try {
         setLoading(true);
-        // 1. Get Location
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
-        });
+        setError(null);
 
-        const { latitude, longitude } = position.coords;
+        // 1. Get Location with Fallback
+        let latitude = 19.0760; // Default: Mumbai
+        let longitude = 72.8777;
+
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { 
+              timeout: 5000,
+              enableHighAccuracy: false
+            });
+          });
+          latitude = position.coords.latitude;
+          longitude = position.coords.longitude;
+        } catch (locationErr) {
+          console.warn('Geolocation failed, using fallback location:', locationErr);
+          // We continue with default Mumbai coordinates
+        }
 
         // 2. Fetch Weather (Open-Meteo)
-        const weatherRes = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m&timezone=auto`
-        );
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,is_day,precipitation,rain,showers,snowfall,weather_code,cloud_cover,wind_speed_10m&timezone=auto`;
+        
+        const weatherRes = await fetch(url).catch(err => {
+          console.error('Fetch operation failed:', err);
+          throw new Error('Network error: Could not reach weather service. Please check your internet or ad-blockers.');
+        });
+
+        if (!weatherRes.ok) {
+          throw new Error(`Weather API returned ${weatherRes.status}`);
+        }
+
         const weatherData = await weatherRes.json();
         const current = weatherData.current;
+
+        if (!current) {
+          throw new Error('Invalid weather data received');
+        }
 
         const simplifiedWeather = {
           temperature: current.temperature_2m,
           humidity: current.relative_humidity_2m,
-          isRaining: current.rain > 0 || current.showers > 0,
+          isRaining: (current.rain || 0) > 0 || (current.showers || 0) > 0,
           windSpeed: current.wind_speed_10m,
           conditionCode: current.weather_code
         };
@@ -51,9 +76,9 @@ export default function WeatherAlerts({ plants }: Props) {
         // 3. Get AI Suggestions
         const aiSuggestions = await generateWeatherSuggestions(simplifiedWeather, plants);
         setSuggestion(aiSuggestions);
-      } catch (err) {
+      } catch (err: any) {
         console.error('Weather fetch error:', err);
-        setError('Could not fetch weather data. Please ensure location access is enabled.');
+        setError(err.message || 'Could not fetch weather data.');
       } finally {
         setLoading(false);
       }

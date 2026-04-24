@@ -1,19 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, onSnapshot, query, orderBy, addDoc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
-import { db, auth, handleFirestoreError, OperationType } from '../firebase';
-import { Plant, TimelineEvent, HealthIssue, CareSchedule } from '../types';
+import { db, auth, storage, handleFirestoreError, OperationType } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { Plant, TimelineEvent, HealthIssue, CareSchedule, WateringLog, FertilizerLog } from '../types';
 import { diagnosePlantProblem, getPlantChatResponse } from '../services/geminiService';
 import { 
   Leaf, Droplets, Sun, Thermometer, Wind, Sprout, 
   Calendar as CalendarIcon, History, MessageCircle, 
-  AlertCircle, CheckCircle2, Plus, Send, Loader2,
-  ChevronRight, ArrowLeft, Info, Sparkles, Edit2, X, Save, Trash2
+  AlertCircle, CheckCircle2, Plus, Send, Loader2, Ruler,
+  ChevronRight, ArrowLeft, Info, Sparkles, Edit2, X, Save, Trash2,
+  Camera, Scissors, Bell, BellOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format, formatDistanceToNow, parseISO } from 'date-fns';
+import { format, formatDistanceToNow, parseISO, intervalToDuration } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
+import GrowthChart from '../components/GrowthChart';
+import VoiceInput from '../components/VoiceInput';
 
 export default function PlantProfile() {
   const { id } = useParams();
@@ -21,6 +25,9 @@ export default function PlantProfile() {
   const [plant, setPlant] = useState<Plant | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [healthIssues, setHealthIssues] = useState<HealthIssue[]>([]);
+  const [wateringLogs, setWateringLogs] = useState<WateringLog[]>([]);
+  const [fertilizerLogs, setFertilizerLogs] = useState<FertilizerLog[]>([]);
+  const [schedules, setSchedules] = useState<CareSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'care' | 'timeline' | 'chat'>('overview');
 
@@ -29,10 +36,13 @@ export default function PlantProfile() {
   const [editForm, setEditForm] = useState({
     name: '',
     species: '',
-    location: ''
+    location: '',
+    plantationDate: ''
   });
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Diagnosis State
@@ -43,6 +53,36 @@ export default function PlantProfile() {
   const [chatMessage, setChatMessage] = useState('');
   const [chatHistory, setChatHistory] = useState<{ role: string, content: string }[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+
+  // Measurement Logging State
+  const [measurementForm, setMeasurementForm] = useState({
+    height: '',
+    foliage: '5'
+  });
+  const [loggingGrowth, setLoggingGrowth] = useState(false);
+
+  // Care Logging State
+  const [wateringForm, setWateringForm] = useState({
+    status: 'Applied' as string,
+    date: new Date().toISOString().split('T')[0]
+  });
+  const [fertilizingForm, setFertilizingForm] = useState({
+    fertilizerName: '',
+    quantity: '',
+    status: 'applied' as 'applied' | 'skipped' | 'snoozed',
+    date: new Date().toISOString().split('T')[0]
+  });
+  const [loggingCare, setLoggingCare] = useState(false);
+
+  // Reminders/Schedules State
+  const [showReminderForm, setShowReminderForm] = useState(false);
+  const [reminderForm, setReminderForm] = useState({
+    type: 'watering' as CareSchedule['type'],
+    frequency: 'Weekly',
+    nextDate: new Date().toISOString().split('T')[0],
+    reminderEnabled: true
+  });
+  const [savingReminder, setSavingReminder] = useState(false);
 
   useEffect(() => {
     const isGuest = localStorage.getItem('isGuest') === 'true';
@@ -58,7 +98,8 @@ export default function PlantProfile() {
         setEditForm({
           name: data.name,
           species: data.species,
-          location: data.location
+          location: data.location,
+          plantationDate: data.plantationDate || ''
         });
       } else {
         navigate('/');
@@ -76,10 +117,28 @@ export default function PlantProfile() {
       setHealthIssues(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as HealthIssue)));
     });
 
+    const wateringQuery = query(collection(db, `plants/${id}/wateringLogs`), orderBy('date', 'desc'));
+    const unsubscribeWatering = onSnapshot(wateringQuery, (snapshot) => {
+      setWateringLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as WateringLog)));
+    });
+
+    const fertilizerQuery = query(collection(db, `plants/${id}/fertilizerLogs`), orderBy('date', 'desc'));
+    const unsubscribeFertilizer = onSnapshot(fertilizerQuery, (snapshot) => {
+      setFertilizerLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FertilizerLog)));
+    });
+
+    const schedulesQuery = query(collection(db, `plants/${id}/schedules`), orderBy('nextDate', 'asc'));
+    const unsubscribeSchedules = onSnapshot(schedulesQuery, (snapshot) => {
+      setSchedules(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CareSchedule)));
+    });
+
     return () => {
       unsubscribePlant();
       unsubscribeTimeline();
       unsubscribeHealth();
+      unsubscribeWatering();
+      unsubscribeFertilizer();
+      unsubscribeSchedules();
     };
   }, [id]);
 
@@ -94,15 +153,25 @@ export default function PlantProfile() {
         date: new Date().toISOString(),
         issueType: 'AI Diagnosis',
         description: issueDescription,
-        ...diagnosis,
-        status: 'ongoing'
+        possibleCause: diagnosis.possibleCause,
+        suggestedSolution: diagnosis.suggestedSolution,
+        riskLevel: diagnosis.riskLevel,
+        status: 'ongoing' as const
       };
 
       await addDoc(collection(db, `plants/${plant.id}/healthIssues`), issueData);
+      
+      // Update overall plant health status
+      const plantRef = doc(db, 'plants', plant.id);
+      const newStatus = diagnosis.riskLevel === 'high' ? 'Critical' : 'Issues Detected';
+      await updateDoc(plantRef, {
+        healthStatus: newStatus
+      });
+
       await addDoc(collection(db, `plants/${plant.id}/timeline`), {
         date: new Date().toISOString(),
         type: 'Health Alert',
-        description: `Logged a health issue: ${diagnosis.possibleCause}`
+        description: `AI Diagnosis: ${diagnosis.possibleCause}. Action required: ${diagnosis.suggestedSolution}`
       });
 
       setIssueDescription('');
@@ -140,13 +209,14 @@ export default function PlantProfile() {
       await updateDoc(plantRef, {
         name: editForm.name,
         species: editForm.species,
-        location: editForm.location
+        location: editForm.location,
+        plantationDate: editForm.plantationDate
       });
 
       await addDoc(collection(db, `plants/${id}/timeline`), {
         date: new Date().toISOString(),
         type: 'Details Updated',
-        description: `Updated plant details: ${editForm.name} (${editForm.species}) at ${editForm.location}`
+        description: `Updated plant details: ${editForm.name}. Plantation date corrected to ${editForm.plantationDate}.`
       });
 
       setIsEditing(false);
@@ -154,6 +224,180 @@ export default function PlantProfile() {
       handleFirestoreError(error, OperationType.UPDATE, `plants/${id}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleLogGrowth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !plant || !measurementForm.height) return;
+    setLoggingGrowth(true);
+    try {
+      const logData = {
+        plantId: id,
+        date: new Date().toISOString(),
+        height: parseFloat(measurementForm.height),
+        foliage: parseInt(measurementForm.foliage)
+      };
+
+      await addDoc(collection(db, `plants/${id}/growthLogs`), logData);
+      
+      await addDoc(collection(db, `plants/${id}/timeline`), {
+        date: new Date().toISOString(),
+        type: 'Growth Measured',
+        description: `Recorded physical growth: ${measurementForm.height}cm height with foliage density of ${measurementForm.foliage}/10.`
+      });
+
+      setMeasurementForm({ height: '', foliage: '5' });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `plants/${id}/growthLogs`);
+    } finally {
+      setLoggingGrowth(false);
+    }
+  };
+
+  const handleLogWatering = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !plant) return;
+    setLoggingCare(true);
+    try {
+      const logData = {
+        plantId: id,
+        date: new Date(wateringForm.date).toISOString(),
+        status: wateringForm.status
+      };
+      await addDoc(collection(db, `plants/${id}/wateringLogs`), logData);
+      await addDoc(collection(db, `plants/${id}/timeline`), {
+        date: new Date().toISOString(),
+        type: 'Watering Logged',
+        description: `Watering event logged: ${wateringForm.status} on ${wateringForm.date}`
+      });
+      setWateringForm(prev => ({ ...prev, date: new Date().toISOString().split('T')[0] }));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `plants/${id}/wateringLogs`);
+    } finally {
+      setLoggingCare(false);
+    }
+  };
+
+  const handleLogFertilizing = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !plant || !fertilizingForm.fertilizerName) return;
+    setLoggingCare(true);
+    try {
+      const logData = {
+        plantId: id,
+        date: new Date(fertilizingForm.date).toISOString(),
+        fertilizerName: fertilizingForm.fertilizerName,
+        quantity: fertilizingForm.quantity,
+        status: fertilizingForm.status
+      };
+      await addDoc(collection(db, `plants/${id}/fertilizerLogs`), logData);
+      await addDoc(collection(db, `plants/${id}/timeline`), {
+        date: new Date().toISOString(),
+        type: 'Fertilizing Logged',
+        description: `Fertilizing event logged: ${fertilizingForm.fertilizerName} (${fertilizingForm.quantity}) status ${fertilizingForm.status}`
+      });
+      setFertilizingForm(prev => ({ ...prev, fertilizerName: '', quantity: '', date: new Date().toISOString().split('T')[0] }));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `plants/${id}/fertilizerLogs`);
+    } finally {
+      setLoggingCare(false);
+    }
+  };
+
+  const handleAddReminder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id) return;
+    setSavingReminder(true);
+    try {
+      const reminderData = {
+        plantId: id,
+        ...reminderForm,
+        nextDate: new Date(reminderForm.nextDate).toISOString()
+      };
+      await addDoc(collection(db, `plants/${id}/schedules`), reminderData);
+      await addDoc(collection(db, `plants/${id}/timeline`), {
+        date: new Date().toISOString(),
+        type: 'Reminder Added',
+        description: `Added ${reminderForm.type} reminder: ${reminderForm.frequency}, next on ${reminderForm.nextDate}`
+      });
+      setShowReminderForm(false);
+      setReminderForm({
+        type: 'watering',
+        frequency: 'Weekly',
+        nextDate: new Date().toISOString().split('T')[0],
+        reminderEnabled: true
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `plants/${id}/schedules`);
+    } finally {
+      setSavingReminder(false);
+    }
+  };
+
+  const handleDeleteReminder = async (reminderId: string) => {
+    if (!id) return;
+    try {
+      await deleteDoc(doc(db, `plants/${id}/schedules`, reminderId));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `plants/${id}/schedules/${reminderId}`);
+    }
+  };
+
+  const handleToggleReminder = async (reminderId: string, currentStatus: boolean) => {
+    if (!id) return;
+    try {
+      const reminderRef = doc(db, `plants/${id}/schedules`, reminderId);
+      await updateDoc(reminderRef, {
+        reminderEnabled: !currentStatus
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `plants/${id}/schedules/${reminderId}`);
+    }
+  };
+
+  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !id || !plant) return;
+
+    setUploadingPhoto(true);
+    try {
+      let finalPhotoUrl = '';
+
+      if (storage) {
+        // Use Firebase Storage if available
+        const isGuest = localStorage.getItem('isGuest') === 'true';
+        const userId = auth.currentUser?.uid || (isGuest ? 'guest-123' : 'unknown');
+        const storageRef = ref(storage, `plants/${userId}/${id}/${Date.now()}_${file.name}`);
+        const snapshot = await uploadBytes(storageRef, file);
+        finalPhotoUrl = await getDownloadURL(snapshot.ref);
+      } else {
+        // Fallback to base64 if storage is not configured
+        const reader = new FileReader();
+        finalPhotoUrl = await new Promise((resolve) => {
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+      }
+
+      if (finalPhotoUrl) {
+        const plantRef = doc(db, 'plants', id);
+        await updateDoc(plantRef, {
+          photoUrl: finalPhotoUrl
+        });
+
+        await addDoc(collection(db, `plants/${id}/timeline`), {
+          date: new Date().toISOString(),
+          type: 'Photo Updated',
+          description: `Updated plant photo.`,
+          photoUrl: finalPhotoUrl // Also store in timeline
+        });
+      }
+    } catch (error) {
+      console.error('Photo upload error:', error);
+      alert('Failed to upload photo. Please try again.');
+    } finally {
+      setUploadingPhoto(false);
     }
   };
 
@@ -172,6 +416,29 @@ export default function PlantProfile() {
     }
   };
 
+  // Age calculation helper
+  const getAccurateAge = (dateString: string | undefined) => {
+    if (!dateString) return null;
+    try {
+      const start = parseISO(dateString);
+      const now = new Date();
+      const duration = intervalToDuration({ start, end: now });
+      
+      const parts = [];
+      if (duration.years) parts.push(`${duration.years} ${duration.years === 1 ? 'year' : 'years'}`);
+      if (duration.months) parts.push(`${duration.months} ${duration.months === 1 ? 'month' : 'months'}`);
+      if (duration.days) parts.push(`${duration.days} ${duration.days === 1 ? 'day' : 'days'}`);
+      
+      if (parts.length === 0) return '0 days';
+      if (parts.length === 1) return parts[0];
+      if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+      
+      return `${parts[0]}, ${parts[1]}, and ${parts[2]}`;
+    } catch (e) {
+      return null;
+    }
+  };
+
   if (loading) return <div className="flex items-center justify-center h-screen"><Leaf className="animate-bounce text-green-600 w-12 h-12" /></div>;
   if (!plant) return null;
 
@@ -184,14 +451,38 @@ export default function PlantProfile() {
 
       {/* Header Card */}
       <div className="bg-white rounded-[2rem] border border-stone-100 shadow-sm overflow-hidden">
-        <div className="h-48 bg-stone-100 relative">
+        <div className="h-64 bg-stone-100 relative group">
           <img 
             src={plant.photoUrl || `https://picsum.photos/seed/${plant.species}/1200/400`} 
             alt={plant.name} 
             className="w-full h-full object-cover"
             referrerPolicy="no-referrer"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+          
+          {/* Edit Photo Button */}
+          <div className="absolute top-6 right-8">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handlePhotoChange}
+              accept="image/*"
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingPhoto}
+              className="bg-black/30 backdrop-blur-md border border-white/20 text-white px-5 py-2.5 rounded-2xl text-sm font-bold flex items-center gap-2 hover:bg-black/50 transition-all shadow-xl group/btn"
+            >
+              {uploadingPhoto ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Camera className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+              )}
+              {uploadingPhoto ? 'Uploading...' : 'Update Plant Photo'}
+            </button>
+          </div>
+
           <div className="absolute bottom-6 left-8 right-8 flex items-end justify-between">
             <div className="text-white flex-1 min-w-0">
               {isEditing ? (
@@ -332,6 +623,60 @@ export default function PlantProfile() {
             className="grid grid-cols-1 lg:grid-cols-3 gap-6"
           >
             <div className="lg:col-span-2 space-y-6">
+              {/* Prominent Vitals Card */}
+              <div className="bg-white rounded-[2rem] p-8 border border-stone-100 shadow-sm overflow-hidden relative">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-green-50 rounded-bl-[4rem] -mr-8 -mt-8 opacity-50" />
+                <div className="relative z-10 grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="flex items-center gap-4">
+                    <div className="w-16 h-16 rounded-2xl bg-green-100 flex items-center justify-center text-green-600">
+                      <Sprout className="w-8 h-8" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-stone-400 uppercase tracking-[0.2em] mb-1">Plant Age</p>
+                      <h3 className="text-xl font-black text-stone-900 leading-tight">
+                        {getAccurateAge(plant.plantationDate) || 'Freshly Planted'}
+                      </h3>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className={cn(
+                      "w-16 h-16 rounded-2xl flex items-center justify-center",
+                      plant.healthStatus === 'Excellent' || plant.healthStatus === 'Healthy' ? "bg-blue-100 text-blue-600" :
+                      plant.healthStatus === 'Issues Detected' ? "bg-orange-100 text-orange-600" :
+                      "bg-red-100 text-red-600"
+                    )}>
+                      {plant.healthStatus === 'Excellent' || plant.healthStatus === 'Healthy' ? <CheckCircle2 className="w-8 h-8" /> : <AlertCircle className="w-8 h-8" />}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-stone-400 uppercase tracking-[0.2em] mb-1">Current Health</p>
+                      <h3 className="text-xl font-black text-stone-900 leading-tight">{plant.healthStatus}</h3>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {!plant.plantationDate && !isEditing && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="bg-orange-50 border border-orange-100 rounded-3xl p-6 flex items-start gap-4"
+                >
+                  <div className="bg-orange-100 p-3 rounded-2xl text-orange-600">
+                    <CalendarIcon className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-bold text-stone-900 mb-1">Missing Plantation Date</h3>
+                    <p className="text-sm text-stone-600 mb-4">Adding a plantation date helps us track growth accuracy and provide better care advice.</p>
+                    <button 
+                      onClick={() => setIsEditing(true)}
+                      className="text-xs font-bold text-orange-600 uppercase tracking-widest hover:text-orange-700 transition-colors"
+                    >
+                      + Add Plantation Date
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
               <section className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm">
                 <h2 className="text-xl font-bold text-stone-900 mb-4 flex items-center gap-2">
                   <Info className="w-5 h-5 text-green-600" />
@@ -340,23 +685,35 @@ export default function PlantProfile() {
                 <p className="text-stone-600 leading-relaxed">
                   {plant.description}
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-8">
+                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mt-8">
                   <div className="bg-stone-50 p-4 rounded-2xl">
-                    <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mb-1">Age</p>
-                    <p className="text-stone-900 font-bold">{plant.age}</p>
+                    <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mb-1">Expected Lifespan</p>
+                    <p className="text-stone-900 font-bold">{plant.expectedLifespan || 'Unknown'}</p>
                   </div>
                   <div className="bg-stone-50 p-4 rounded-2xl">
-                    <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mb-1">Lifespan</p>
-                    <p className="text-stone-900 font-bold">{plant.expectedLifespan}</p>
+                    <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mb-1">Planted On</p>
+                    {isEditing ? (
+                      <input
+                        type="date"
+                        className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-stone-900 font-bold outline-none focus:border-green-500 transition-all text-xs"
+                        value={editForm.plantationDate}
+                        onChange={(e) => setEditForm({ ...editForm, plantationDate: e.target.value })}
+                      />
+                    ) : (
+                      <p className="text-stone-900 font-bold">
+                        {plant.plantationDate ? format(parseISO(plant.plantationDate), 'MMM d, yyyy') : 'N/A'}
+                      </p>
+                    )}
                   </div>
                   <div className="bg-stone-50 p-4 rounded-2xl">
                     <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mb-1">Location</p>
                     {isEditing ? (
                       <input
                         type="text"
-                        className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-stone-900 font-bold outline-none focus:border-green-500 transition-all"
+                        className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-stone-900 font-bold outline-none focus:border-green-500 transition-all text-xs"
                         value={editForm.location}
                         onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                        placeholder="e.g. Balcony"
                       />
                     ) : (
                       <p className="text-stone-900 font-bold">{plant.location}</p>
@@ -366,12 +723,74 @@ export default function PlantProfile() {
               </section>
 
               <section className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-bold text-stone-900 flex items-center gap-2">
+                    <Ruler className="w-5 h-5 text-green-600" />
+                    Growth Tracking
+                  </h2>
+                </div>
+                <form onSubmit={handleLogGrowth} className="grid grid-cols-1 sm:grid-cols-12 gap-6 items-end">
+                  <div className="sm:col-span-4 space-y-2">
+                    <label className="text-xs font-bold text-stone-400 uppercase tracking-wider ml-1">Height (cm)</label>
+                    <div className="relative">
+                      <input 
+                        type="number" 
+                        step="0.1"
+                        required
+                        placeholder="0.0"
+                        className="w-full pl-4 pr-12 py-3 rounded-2xl bg-stone-50 border border-stone-100 focus:border-green-500 outline-none transition-all font-bold"
+                        value={measurementForm.height}
+                        onChange={(e) => setMeasurementForm(prev => ({ ...prev, height: e.target.value }))}
+                      />
+                      <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-400">CM</span>
+                    </div>
+                  </div>
+                  <div className="sm:col-span-5 space-y-2">
+                    <div className="flex justify-between items-center mb-1 ml-1">
+                      <label className="text-xs font-bold text-stone-400 uppercase tracking-wider">Foliage Density</label>
+                      <span className="text-xs font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-lg">{measurementForm.foliage}/10</span>
+                    </div>
+                    <div className="px-2">
+                      <input 
+                        type="range" 
+                        min="1" 
+                        max="10"
+                        className="w-full accent-green-600 cursor-pointer h-2 bg-stone-100 rounded-lg appearance-none"
+                        value={measurementForm.foliage}
+                        onChange={(e) => setMeasurementForm(prev => ({ ...prev, foliage: e.target.value }))}
+                      />
+                      <div className="flex justify-between mt-1 px-1">
+                        <span className="text-[10px] font-bold text-stone-300">SPARSE</span>
+                        <span className="text-[10px] font-bold text-stone-300">DENSE</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="sm:col-span-3">
+                    <button 
+                      type="submit"
+                      disabled={loggingGrowth}
+                      className="w-full bg-green-600 text-white py-3.5 rounded-2xl font-bold hover:bg-green-700 transition-all shadow-lg shadow-green-100 flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {loggingGrowth ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                      Save Measurements
+                    </button>
+                  </div>
+                </form>
+              </section>
+
+              <GrowthChart plantId={plant.id} />
+
+              <section className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm">
                 <h2 className="text-xl font-bold text-stone-900 mb-6 flex items-center gap-2">
                   <AlertCircle className="w-5 h-5 text-orange-500" />
-                  Health Tracker
+                  Health History Log
                 </h2>
                 
-                <div className="flex gap-4 mb-8">
+                <div className="flex gap-4 mb-8 items-center">
+                  <VoiceInput 
+                    onResult={(text) => setIssueDescription(prev => prev + (prev ? ' ' : '') + text)}
+                    placeholder="Describe the issue..."
+                  />
                   <input 
                     type="text" 
                     placeholder="Describe a health issue (e.g. yellow leaves)..."
@@ -396,12 +815,24 @@ export default function PlantProfile() {
                         <span className="text-xs font-bold text-stone-400 uppercase tracking-wider">
                           {format(parseISO(issue.date), 'MMM d, yyyy')}
                         </span>
-                        <span className={cn(
-                          "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full",
-                          issue.status === 'resolved' ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
-                        )}>
-                          {issue.status}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {issue.riskLevel && (
+                            <span className={cn(
+                              "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full",
+                              issue.riskLevel === 'high' ? "bg-red-100 text-red-700" : 
+                              issue.riskLevel === 'medium' ? "bg-yellow-100 text-yellow-700" : 
+                              "bg-blue-100 text-blue-700"
+                            )}>
+                              {issue.riskLevel} Risk
+                            </span>
+                          )}
+                          <span className={cn(
+                            "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full",
+                            issue.status === 'resolved' ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
+                          )}>
+                            {issue.status}
+                          </span>
+                        </div>
                       </div>
                       <h3 className="font-bold text-stone-900 mb-1">{issue.possibleCause}</h3>
                       <p className="text-sm text-stone-600 mb-3">{issue.suggestedSolution}</p>
@@ -449,24 +880,326 @@ export default function PlantProfile() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="grid grid-cols-1 md:grid-cols-2 gap-6"
+            className="space-y-8"
           >
-            {plant.careGuide && Object.entries(plant.careGuide).map(([key, value]) => (
-              <div key={key} className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm flex gap-6">
-                <div className="w-16 h-16 rounded-2xl bg-stone-50 flex items-center justify-center flex-shrink-0">
-                  {key === 'watering' && <Droplets className="w-8 h-8 text-blue-500" />}
-                  {key === 'sunlight' && <Sun className="w-8 h-8 text-yellow-500" />}
-                  {key === 'temperature' && <Thermometer className="w-8 h-8 text-orange-500" />}
-                  {key === 'humidity' && <Wind className="w-8 h-8 text-cyan-500" />}
-                  {key === 'soil' && <Sprout className="w-8 h-8 text-stone-500" />}
-                  {key === 'repotting' && <History className="w-8 h-8 text-purple-500" />}
+            {/* Care Guide Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {plant.careGuide && Object.entries(plant.careGuide).map(([key, value]) => (
+                <div key={key} className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm flex gap-6">
+                  <div className="w-16 h-16 rounded-2xl bg-stone-50 flex items-center justify-center flex-shrink-0">
+                    {key === 'watering' && <Droplets className="w-8 h-8 text-blue-500" />}
+                    {key === 'sunlight' && <Sun className="w-8 h-8 text-yellow-500" />}
+                    {key === 'temperature' && <Thermometer className="w-8 h-8 text-orange-500" />}
+                    {key === 'humidity' && <Wind className="w-8 h-8 text-cyan-500" />}
+                    {key === 'soil' && <Sprout className="w-8 h-8 text-stone-500" />}
+                    {key === 'repotting' && <History className="w-8 h-8 text-purple-500" />}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-stone-900 mb-1 capitalize">{key}</h3>
+                    <p className="text-stone-500 leading-relaxed">{value as string}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-bold text-stone-900 mb-1 capitalize">{key}</h3>
-                  <p className="text-stone-500 leading-relaxed">{value as string}</p>
+              ))}
+            </div>
+
+            {/* Custom Reminders Section */}
+            <section className="bg-white rounded-[2rem] border border-stone-100 shadow-sm overflow-hidden">
+              <div className="p-8 border-b border-stone-100 flex items-center justify-between bg-stone-50/30">
+                <div className="flex items-center gap-3">
+                  <div className="bg-green-100 p-3 rounded-2xl text-green-700">
+                    <CalendarIcon className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-stone-900">Custom Care Reminders</h2>
+                    <p className="text-sm text-stone-500">Set recurring tasks for this plant.</p>
+                  </div>
                 </div>
+                <button 
+                  onClick={() => setShowReminderForm(!showReminderForm)}
+                  className="bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-green-700 transition-all shadow-lg shadow-green-100 flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  {showReminderForm ? 'Cancel' : 'Add Reminder'}
+                </button>
               </div>
-            ))}
+
+              {showReminderForm && (
+                <div className="p-8 bg-stone-50/50 border-b border-stone-100">
+                  <form onSubmit={handleAddReminder} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Task Type</label>
+                      <select 
+                        className="w-full px-4 py-3 rounded-2xl bg-white border border-stone-200 focus:border-green-500 outline-none transition-all text-sm font-bold"
+                        value={reminderForm.type}
+                        onChange={(e) => setReminderForm(prev => ({ ...prev, type: e.target.value as any }))}
+                      >
+                        <option value="watering">Watering</option>
+                        <option value="fertilizing">Fertilizing</option>
+                        <option value="repotting">Repotting</option>
+                        <option value="pruning">Pruning</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Frequency</label>
+                      <select 
+                        className="w-full px-4 py-3 rounded-2xl bg-white border border-stone-200 focus:border-green-500 outline-none transition-all text-sm font-bold"
+                        value={reminderForm.frequency}
+                        onChange={(e) => setReminderForm(prev => ({ ...prev, frequency: e.target.value }))}
+                      >
+                        <option value="Daily">Daily</option>
+                        <option value="Every 2 Days">Every 2 Days</option>
+                        <option value="Weekly">Weekly</option>
+                        <option value="Bi-weekly">Bi-weekly</option>
+                        <option value="Monthly">Monthly</option>
+                        <option value="Custom">Custom</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Starting On</label>
+                      <input 
+                        type="date"
+                        required
+                        className="w-full px-4 py-3 rounded-2xl bg-white border border-stone-200 focus:border-green-500 outline-none transition-all text-sm font-bold"
+                        value={reminderForm.nextDate}
+                        onChange={(e) => setReminderForm(prev => ({ ...prev, nextDate: e.target.value }))}
+                      />
+                    </div>
+                    <button 
+                      type="submit"
+                      disabled={savingReminder}
+                      className="bg-stone-900 text-white py-3 rounded-2xl font-bold hover:bg-stone-800 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {savingReminder ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                      Save Reminder
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              <div className="divide-y divide-stone-100">
+                {schedules.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <p className="text-stone-400 italic text-sm">No care reminders set yet. Add one to see it in your calendar!</p>
+                  </div>
+                ) : (
+                  schedules.map(reminder => (
+                    <div key={reminder.id} className="p-6 flex items-center justify-between hover:bg-stone-50/50 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className={cn(
+                          "w-12 h-12 rounded-2xl flex items-center justify-center",
+                          reminder.type === 'watering' ? "bg-blue-50 text-blue-600" :
+                          reminder.type === 'fertilizing' ? "bg-orange-50 text-orange-600" :
+                          reminder.type === 'repotting' ? "bg-purple-50 text-purple-600" :
+                          "bg-green-50 text-green-600"
+                        )}>
+                          {reminder.type === 'watering' && <Droplets className="w-6 h-6" />}
+                          {reminder.type === 'fertilizing' && <Sun className="w-6 h-6" />}
+                          {reminder.type === 'repotting' && <History className="w-6 h-6" />}
+                          {reminder.type === 'pruning' && <Scissors className="w-6 h-6" />}
+                        </div>
+                        <div>
+                          <h4 className={cn(
+                            "font-bold capitalize",
+                            reminder.reminderEnabled ? "text-stone-900" : "text-stone-400"
+                          )}>{reminder.type}</h4>
+                          <p className="text-sm text-stone-500">{reminder.frequency} • Next: {format(parseISO(reminder.nextDate), 'MMM d, yyyy')}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => handleToggleReminder(reminder.id, reminder.reminderEnabled)}
+                          className={cn(
+                            "p-2 rounded-xl transition-all",
+                            reminder.reminderEnabled 
+                              ? "bg-green-50 text-green-600 hover:bg-green-100" 
+                              : "bg-stone-100 text-stone-400 hover:bg-stone-200"
+                          )}
+                          title={reminder.reminderEnabled ? "Disable Reminder" : "Enable Reminder"}
+                        >
+                          {reminder.reminderEnabled ? <Bell className="w-5 h-5" /> : <BellOff className="w-5 h-5" />}
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteReminder(reminder.id)}
+                          className="p-2 text-stone-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all"
+                          title="Remove Reminder"
+                        >
+                          <Trash2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            {/* Logging Sections */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Watering Log Form & History */}
+              <div className="space-y-6">
+                <section className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm">
+                  <h2 className="text-xl font-bold text-stone-900 mb-6 flex items-center gap-2">
+                    <Droplets className="w-5 h-5 text-blue-500" />
+                    Log Watering
+                  </h2>
+                  <form onSubmit={handleLogWatering} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Date</label>
+                        <input 
+                          type="date"
+                          required
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-blue-500 outline-none transition-all text-sm"
+                          value={wateringForm.date}
+                          onChange={(e) => setWateringForm(prev => ({ ...prev, date: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Status</label>
+                        <select 
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-blue-500 outline-none transition-all text-sm"
+                          value={wateringForm.status}
+                          onChange={(e) => setWateringForm(prev => ({ ...prev, status: e.target.value }))}
+                        >
+                          <option value="Applied">Applied</option>
+                          <option value="Slightly Moistened">Slightly Moistened</option>
+                          <option value="Deep Watering">Deep Watering</option>
+                        </select>
+                      </div>
+                    </div>
+                    <button 
+                      type="submit"
+                      disabled={loggingCare}
+                      className="w-full bg-blue-600 text-white py-3 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100 flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {loggingCare ? <Loader2 className="w-5 h-5 animate-spin" /> : <Droplets className="w-5 h-5" />}
+                      Record Watering
+                    </button>
+                  </form>
+                </section>
+
+                <section className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm">
+                  <h3 className="text-lg font-bold text-stone-900 mb-6">Watering History</h3>
+                  <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 scrollbar-hide">
+                    {wateringLogs.length === 0 ? (
+                      <p className="text-stone-400 text-sm italic text-center py-8">No watering events logged yet.</p>
+                    ) : (
+                      wateringLogs.map(log => (
+                        <div key={log.id} className="flex items-center justify-between p-4 rounded-2xl bg-stone-50/50 border border-stone-100">
+                          <div>
+                            <p className="text-sm font-bold text-stone-900">{format(parseISO(log.date), 'MMMM d, yyyy')}</p>
+                            <p className="text-xs text-stone-500">{log.status}</p>
+                          </div>
+                          <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
+                            <Droplets className="w-4 h-4" />
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </section>
+              </div>
+
+              {/* Fertilizing Log Form & History */}
+              <div className="space-y-6">
+                <section className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm">
+                  <h2 className="text-xl font-bold text-stone-900 mb-6 flex items-center gap-2">
+                    <Sun className="w-5 h-5 text-orange-500" />
+                    Log Fertilizing
+                  </h2>
+                  <form onSubmit={handleLogFertilizing} className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Date</label>
+                        <input 
+                          type="date"
+                          required
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-orange-500 outline-none transition-all text-sm"
+                          value={fertilizingForm.date}
+                          onChange={(e) => setFertilizingForm(prev => ({ ...prev, date: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Status</label>
+                        <select 
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-orange-500 outline-none transition-all text-sm"
+                          value={fertilizingForm.status}
+                          onChange={(e) => setFertilizingForm(prev => ({ ...prev, status: e.target.value as any }))}
+                        >
+                          <option value="applied">Applied</option>
+                          <option value="skipped">Skipped</option>
+                          <option value="snoozed">Snoozed</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Fertilizer Name</label>
+                        <input 
+                          type="text"
+                          required
+                          placeholder="e.g. NPK 10-10-10"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-orange-500 outline-none transition-all text-sm"
+                          value={fertilizingForm.fertilizerName}
+                          onChange={(e) => setFertilizingForm(prev => ({ ...prev, fertilizerName: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Quantity</label>
+                        <input 
+                          type="text"
+                          placeholder="e.g. 50g"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-orange-500 outline-none transition-all text-sm"
+                          value={fertilizingForm.quantity}
+                          onChange={(e) => setFertilizingForm(prev => ({ ...prev, quantity: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <button 
+                      type="submit"
+                      disabled={loggingCare || !fertilizingForm.fertilizerName}
+                      className="w-full bg-orange-600 text-white py-3 rounded-2xl font-bold hover:bg-orange-700 transition-all shadow-lg shadow-orange-100 flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {loggingCare ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sun className="w-5 h-5" />}
+                      Record Fertilizing
+                    </button>
+                  </form>
+                </section>
+
+                <section className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm">
+                  <h3 className="text-lg font-bold text-stone-900 mb-6">Fertilizing History</h3>
+                  <div className="space-y-4 max-h-[300px] overflow-y-auto pr-2 scrollbar-hide">
+                    {fertilizerLogs.length === 0 ? (
+                      <p className="text-stone-400 text-sm italic text-center py-8">No fertilizing events logged yet.</p>
+                    ) : (
+                      fertilizerLogs.map(log => (
+                        <div key={log.id} className="p-4 rounded-2xl bg-stone-50/50 border border-stone-100">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">
+                              {format(parseISO(log.date), 'MMMM d, yyyy')}
+                            </span>
+                            <span className={cn(
+                              "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full",
+                              log.status === 'applied' ? "bg-orange-100 text-orange-700" : "bg-stone-200 text-stone-600"
+                            )}>
+                              {log.status}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <h4 className="font-bold text-stone-900">{log.fertilizerName}</h4>
+                              {log.quantity && <p className="text-xs text-stone-500">{log.quantity}</p>}
+                            </div>
+                            <div className="bg-orange-50 p-2 rounded-lg text-orange-600">
+                              <Sprout className="w-4 h-4" />
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </section>
+              </div>
+            </div>
           </motion.div>
         )}
 
@@ -552,7 +1285,11 @@ export default function PlantProfile() {
               )}
             </div>
 
-            <form onSubmit={handleSendMessage} className="p-4 border-t border-stone-100 flex gap-2">
+            <form onSubmit={handleSendMessage} className="p-4 border-t border-stone-100 flex gap-2 items-center">
+              <VoiceInput 
+                onResult={(text) => setChatMessage(prev => prev + (prev ? ' ' : '') + text)}
+                placeholder="Speak your question..."
+              />
               <input 
                 type="text" 
                 placeholder="Type your question..."

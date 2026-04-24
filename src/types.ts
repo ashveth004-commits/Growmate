@@ -74,6 +74,7 @@ export interface HealthIssue {
   description: string;
   possibleCause: string;
   suggestedSolution: string;
+  riskLevel?: string;
   status: 'resolved' | 'ongoing';
 }
 
@@ -91,6 +92,14 @@ export interface AIInsight {
   date: string;
   type: 'prediction' | 'tip' | 'alert';
   content: string;
+}
+
+export interface GrowthLog {
+  id: string;
+  plantId: string;
+  date: string;
+  height: number;
+  foliage: number;
 }
 
 export interface WeatherData {

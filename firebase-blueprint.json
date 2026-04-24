@@ -7,11 +7,12 @@
       "properties": {
         "uid": { "type": "string" },
         "email": { "type": "string", "format": "email" },
+        "phoneNumber": { "type": "string" },
         "displayName": { "type": "string" },
         "photoURL": { "type": "string" },
         "role": { "type": "string", "enum": ["user", "admin"] }
       },
-      "required": ["uid", "email"]
+      "required": ["uid"]
     },
     "Plant": {
       "title": "Plant",
@@ -117,6 +118,19 @@
         "content": { "type": "string" }
       },
       "required": ["id", "plantId", "date", "type", "content"]
+    },
+    "GrowthLog": {
+      "title": "GrowthLog",
+      "description": "Log of plant height and foliage density",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "plantId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "height": { "type": "number" },
+        "foliage": { "type": "number" }
+      },
+      "required": ["id", "plantId", "date", "height", "foliage"]
     }
   },
   "firestore": {
@@ -151,6 +165,10 @@
     "/plants/{plantId}/insights/{insightId}": {
       "schema": "AIInsight",
       "description": "AI generated insights"
+    },
+    "/plants/{plantId}/growthLogs/{logId}": {
+      "schema": "GrowthLog",
+      "description": "Growth tracking logs"
     }
   }
 }

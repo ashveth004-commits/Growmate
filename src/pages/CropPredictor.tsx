@@ -18,17 +18,36 @@ export default function CropPredictor() {
   useEffect(() => {
     const fetchWeather = async () => {
       try {
-        const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000 });
+        setWeather(null);
+        
+        let latitude = 19.0760; // Default: Mumbai
+        let longitude = 72.8777;
+
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { 
+              timeout: 5000,
+              enableHighAccuracy: false
+            });
+          });
+          latitude = position.coords.latitude;
+          longitude = position.coords.longitude;
+        } catch (locationErr) {
+          console.warn('Geolocation failed, using fallback location:', locationErr);
+        }
+
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto`;
+        const weatherRes = await fetch(url).catch(err => {
+          console.error('Weather fetch error:', err);
+          return null;
         });
-        const { latitude, longitude } = position.coords;
-        const weatherRes = await fetch(
-          `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,relative_humidity_2m,weather_code&timezone=auto`
-        );
-        const data = await weatherRes.json();
-        setWeather(data.current);
+
+        if (weatherRes && weatherRes.ok) {
+          const data = await weatherRes.json();
+          setWeather(data.current);
+        }
       } catch (err) {
-        console.error('Weather fetch error:', err);
+        console.error('Weather component error:', err);
       }
     };
     fetchWeather();

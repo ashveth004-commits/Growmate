@@ -9,9 +9,9 @@ export default function Profile() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const isGuest = localStorage.getItem('isGuest') === 'true';
 
   useEffect(() => {
-    const isGuest = localStorage.getItem('isGuest') === 'true';
     const userId = auth.currentUser?.uid || (isGuest ? 'guest-123' : null);
     
     if (!userId) return;
@@ -37,13 +37,16 @@ export default function Profile() {
     fetchProfile();
   }, []);
 
-  const isGuest = localStorage.getItem('isGuest') === 'true';
   const displayUser = auth.currentUser || (isGuest ? {
     displayName: 'Guest User',
     email: 'guest@example.com',
     uid: 'guest-123',
-    photoURL: null
+    photoURL: null,
+    phoneNumber: null
   } : null);
+
+  const displayName = displayUser?.displayName || displayUser?.phoneNumber || 'User';
+  const displayEmail = displayUser?.email || (displayUser?.phoneNumber ? 'Phone Verified' : '');
 
   if (loading) return <div className="flex items-center justify-center h-64"><Leaf className="animate-bounce text-green-600 w-8 h-8" /></div>;
 
@@ -67,8 +70,8 @@ export default function Profile() {
                 <Settings className="text-white w-4 h-4" />
               </div>
             </div>
-            <h2 className="text-xl font-bold text-stone-900">{displayUser?.displayName}</h2>
-            <p className="text-stone-500 text-sm">{displayUser?.email}</p>
+            <h2 className="text-xl font-bold text-stone-900">{displayName}</h2>
+            <p className="text-stone-500 text-sm">{displayEmail}</p>
             <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-stone-100 rounded-full text-[10px] font-bold uppercase tracking-wider text-stone-600">
               <Shield className="w-3 h-3" />
               {profile?.role || 'User'}
@@ -101,7 +104,7 @@ export default function Profile() {
                   <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
                   <input
                     type="text"
-                    defaultValue={displayUser?.displayName || ''}
+                    defaultValue={displayName === displayUser?.phoneNumber ? '' : displayName}
                     className="w-full pl-12 pr-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 outline-none transition-all"
                   />
                 </div>
@@ -114,6 +117,20 @@ export default function Profile() {
                     disabled
                     type="email"
                     defaultValue={displayUser?.email || ''}
+                    placeholder="No email provided"
+                    className="w-full pl-12 pr-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-stone-400 cursor-not-allowed outline-none"
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-stone-700 ml-1">Phone Number</label>
+                <div className="relative">
+                  <Settings className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
+                  <input
+                    disabled
+                    type="tel"
+                    defaultValue={displayUser?.phoneNumber || ''}
+                    placeholder="No phone number provided"
                     className="w-full pl-12 pr-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-stone-400 cursor-not-allowed outline-none"
                   />
                 </div>

@@ -58,6 +58,9 @@ service cloud.firestore {
       match /insights/{insightId} {
         allow read, write: if isPlantOwner(plantId);
       }
+      match /growthLogs/{logId} {
+        allow read, write: if isPlantOwner(plantId);
+      }
     }
   }
 }

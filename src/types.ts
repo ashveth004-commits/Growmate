@@ -57,6 +57,8 @@ export interface FertilizerLog {
   fertilizerName: string;
   quantity: string;
   status: 'applied' | 'skipped' | 'snoozed';
+  fertilizerType: 'Liquid' | 'Granular' | 'Slow-Release' | 'Organic';
+  notes?: string;
 }
 
 export interface WateringLog {

@@ -69,6 +69,8 @@ export default function PlantProfile() {
   const [fertilizingForm, setFertilizingForm] = useState({
     fertilizerName: '',
     quantity: '',
+    fertilizerType: 'Liquid' as 'Liquid' | 'Granular' | 'Slow-Release' | 'Organic',
+    notes: '',
     status: 'applied' as 'applied' | 'skipped' | 'snoozed',
     date: new Date().toISOString().split('T')[0]
   });
@@ -156,7 +158,8 @@ export default function PlantProfile() {
         possibleCause: diagnosis.possibleCause,
         suggestedSolution: diagnosis.suggestedSolution,
         riskLevel: diagnosis.riskLevel,
-        status: 'ongoing' as const
+        status: 'ongoing' as const,
+        loggedBy: 'AI Assistant'
       };
 
       await addDoc(collection(db, `plants/${plant.id}/healthIssues`), issueData);
@@ -170,8 +173,9 @@ export default function PlantProfile() {
 
       await addDoc(collection(db, `plants/${plant.id}/timeline`), {
         date: new Date().toISOString(),
-        type: 'Health Alert',
-        description: `AI Diagnosis: ${diagnosis.possibleCause}. Action required: ${diagnosis.suggestedSolution}`
+        type: 'AI Health Assessment',
+        description: `New AI Diagnosis logged for: "${issueDescription}". Possible Cause: ${diagnosis.possibleCause}. Recommended: ${diagnosis.suggestedSolution}`,
+        issueRef: issueData
       });
 
       setIssueDescription('');
@@ -179,6 +183,34 @@ export default function PlantProfile() {
       console.error('Diagnosis error:', error);
     } finally {
       setDiagnosing(false);
+    }
+  };
+
+  const handleResolveIssue = async (issueId: string) => {
+    if (!id) return;
+    try {
+      const issueRef = doc(db, `plants/${id}/healthIssues`, issueId);
+      await updateDoc(issueRef, {
+        status: 'resolved' as const,
+        resolvedAt: new Date().toISOString()
+      });
+      
+      // Check if all issues are resolved to potentially update plant health status
+      const unresolved = healthIssues.filter(i => i.id !== issueId && i.status === 'ongoing');
+      if (unresolved.length === 0) {
+        const plantRef = doc(db, 'plants', id);
+        await updateDoc(plantRef, {
+          healthStatus: 'Healthy'
+        });
+      }
+
+      await addDoc(collection(db, `plants/${id}/timeline`), {
+        date: new Date().toISOString(),
+        type: 'Health Resolved',
+        description: `A health issue has been marked as resolved.`
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `plants/${id}/healthIssues/${issueId}`);
     }
   };
 
@@ -281,23 +313,32 @@ export default function PlantProfile() {
 
   const handleLogFertilizing = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!id || !plant || !fertilizingForm.fertilizerName) return;
+    if (!id || !plant || !fertilizingForm.fertilizerName || !fertilizingForm.fertilizerType) return;
     setLoggingCare(true);
     try {
       const logData = {
         plantId: id,
         date: new Date(fertilizingForm.date).toISOString(),
         fertilizerName: fertilizingForm.fertilizerName,
+        fertilizerType: fertilizingForm.fertilizerType,
         quantity: fertilizingForm.quantity,
+        notes: fertilizingForm.notes,
         status: fertilizingForm.status
       };
       await addDoc(collection(db, `plants/${id}/fertilizerLogs`), logData);
       await addDoc(collection(db, `plants/${id}/timeline`), {
         date: new Date().toISOString(),
         type: 'Fertilizing Logged',
-        description: `Fertilizing event logged: ${fertilizingForm.fertilizerName} (${fertilizingForm.quantity}) status ${fertilizingForm.status}`
+        description: `Fertilizing event logged: ${fertilizingForm.fertilizerName} (${fertilizingForm.fertilizerType}${fertilizingForm.quantity ? `, ${fertilizingForm.quantity}` : ''}) status ${fertilizingForm.status}. ${fertilizingForm.notes ? `Notes: ${fertilizingForm.notes}` : ''}`
       });
-      setFertilizingForm(prev => ({ ...prev, fertilizerName: '', quantity: '', date: new Date().toISOString().split('T')[0] }));
+      setFertilizingForm(prev => ({ 
+        ...prev, 
+        fertilizerName: '', 
+        quantity: '', 
+        notes: '',
+        fertilizerType: 'Liquid',
+        date: new Date().toISOString().split('T')[0] 
+      }));
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `plants/${id}/fertilizerLogs`);
     } finally {
@@ -810,32 +851,74 @@ export default function PlantProfile() {
 
                 <div className="space-y-4">
                   {healthIssues.map((issue) => (
-                    <div key={issue.id} className="border border-stone-100 rounded-2xl p-4 bg-stone-50/50">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-bold text-stone-400 uppercase tracking-wider">
-                          {format(parseISO(issue.date), 'MMM d, yyyy')}
-                        </span>
+                    <div key={issue.id} className={cn(
+                      "border rounded-2xl p-6 transition-all",
+                      issue.status === 'resolved' ? "bg-stone-50 border-stone-100 opacity-75" : "bg-white border-stone-100 shadow-sm"
+                    )}>
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className={cn(
+                            "w-10 h-10 rounded-xl flex items-center justify-center",
+                            issue.status === 'resolved' ? "bg-stone-200 text-stone-500" : "bg-green-100 text-green-600"
+                          )}>
+                            <Sparkles className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-stone-400 uppercase tracking-widest block mb-0.5">
+                              {format(parseISO(issue.date), 'MMMM d, yyyy')}
+                            </span>
+                            <h3 className={cn(
+                              "font-bold text-lg leading-tight",
+                              issue.status === 'resolved' ? "text-stone-500" : "text-stone-900"
+                            )}>
+                              {issue.possibleCause}
+                            </h3>
+                          </div>
+                        </div>
                         <div className="flex items-center gap-2">
                           {issue.riskLevel && (
                             <span className={cn(
-                              "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full",
-                              issue.riskLevel === 'high' ? "bg-red-100 text-red-700" : 
-                              issue.riskLevel === 'medium' ? "bg-yellow-100 text-yellow-700" : 
-                              "bg-blue-100 text-blue-700"
+                              "text-[10px] font-bold uppercase tracking-wider px-3 py-1 rounded-full",
+                              issue.riskLevel === 'high' ? "bg-red-50 text-red-700" : 
+                              issue.riskLevel === 'medium' ? "bg-yellow-50 text-yellow-700" : 
+                              "bg-blue-50 text-blue-700"
                             )}>
-                              {issue.riskLevel} Risk
+                              {issue.riskLevel} Level
                             </span>
                           )}
-                          <span className={cn(
-                            "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full",
-                            issue.status === 'resolved' ? "bg-green-100 text-green-700" : "bg-orange-100 text-orange-700"
-                          )}>
-                            {issue.status}
-                          </span>
+                          <button 
+                            onClick={() => issue.status === 'ongoing' && handleResolveIssue(issue.id)}
+                            disabled={issue.status === 'resolved'}
+                            className={cn(
+                              "text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full transition-all",
+                              issue.status === 'resolved' 
+                                ? "bg-green-50 text-green-600 cursor-default" 
+                                : "bg-stone-900 text-white hover:bg-green-600"
+                            )}
+                          >
+                            {issue.status === 'resolved' ? 'Resolved' : 'Mark Resolved'}
+                          </button>
                         </div>
                       </div>
-                      <h3 className="font-bold text-stone-900 mb-1">{issue.possibleCause}</h3>
-                      <p className="text-sm text-stone-600 mb-3">{issue.suggestedSolution}</p>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest mb-1.5">Observation</p>
+                          <p className="text-sm text-stone-600 italic">"{issue.description}"</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-green-600 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Suggested Solution
+                          </p>
+                          <p className={cn(
+                            "text-sm leading-relaxed",
+                            issue.status === 'resolved' ? "text-stone-500" : "text-stone-800 font-medium"
+                          )}>
+                            {issue.suggestedSolution}
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1138,19 +1221,45 @@ export default function PlantProfile() {
                           type="text"
                           required
                           placeholder="e.g. NPK 10-10-10"
-                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-orange-500 outline-none transition-all text-sm"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-orange-500 outline-none transition-all text-sm font-medium"
                           value={fertilizingForm.fertilizerName}
                           onChange={(e) => setFertilizingForm(prev => ({ ...prev, fertilizerName: e.target.value }))}
                         />
                       </div>
                       <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Fertilizer Type</label>
+                        <select 
+                          required
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-orange-500 outline-none transition-all text-sm font-medium"
+                          value={fertilizingForm.fertilizerType}
+                          onChange={(e) => setFertilizingForm(prev => ({ ...prev, fertilizerType: e.target.value as any }))}
+                        >
+                          <option value="Liquid">Liquid</option>
+                          <option value="Granular">Granular</option>
+                          <option value="Slow-Release">Slow-Release</option>
+                          <option value="Organic">Organic</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
                         <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Quantity</label>
                         <input 
                           type="text"
-                          placeholder="e.g. 50g"
-                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-orange-500 outline-none transition-all text-sm"
+                          placeholder="e.g. 50g or 2ml/L"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-orange-500 outline-none transition-all text-sm font-medium"
                           value={fertilizingForm.quantity}
                           onChange={(e) => setFertilizingForm(prev => ({ ...prev, quantity: e.target.value }))}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Notes (Optional)</label>
+                        <input 
+                          type="text"
+                          placeholder="e.g. Mixed with watering"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-orange-500 outline-none transition-all text-sm font-medium"
+                          value={fertilizingForm.notes}
+                          onChange={(e) => setFertilizingForm(prev => ({ ...prev, notes: e.target.value }))}
                         />
                       </div>
                     </div>
@@ -1186,8 +1295,16 @@ export default function PlantProfile() {
                           </div>
                           <div className="flex items-center justify-between">
                             <div>
-                              <h4 className="font-bold text-stone-900">{log.fertilizerName}</h4>
-                              {log.quantity && <p className="text-xs text-stone-500">{log.quantity}</p>}
+                              <div className="flex items-center gap-2 mb-1">
+                                <h4 className="font-bold text-stone-900">{log.fertilizerName}</h4>
+                                <span className="text-[10px] font-bold bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full uppercase">
+                                  {log.fertilizerType}
+                                </span>
+                              </div>
+                              <div className="space-y-0.5">
+                                {log.quantity && <p className="text-xs text-stone-500 font-medium">Quantity: {log.quantity}</p>}
+                                {log.notes && <p className="text-xs text-stone-400 italic">"{log.notes}"</p>}
+                              </div>
                             </div>
                             <div className="bg-orange-50 p-2 rounded-lg text-orange-600">
                               <Sprout className="w-4 h-4" />

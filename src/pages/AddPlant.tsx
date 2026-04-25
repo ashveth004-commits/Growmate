@@ -5,7 +5,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { generatePlantProfile } from '../services/geminiService';
 import { Leaf, MapPin, Calendar as CalendarIcon, Camera, Loader2, Sparkles, X, AlertCircle } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import VoiceInput from '../components/VoiceInput';
 
@@ -20,6 +20,8 @@ export default function AddPlant() {
     isIndoor: true,
     plantationDate: new Date().toISOString().split('T')[0],
     location: '',
+    latitude: undefined as number | undefined,
+    longitude: undefined as number | undefined,
     potSize: '',
     description: '',
     expectedLifespan: ''
@@ -111,6 +113,8 @@ export default function AddPlant() {
       const plantData = {
         ...formData,
         ...aiProfile,
+        latitude: formData.latitude || null,
+        longitude: formData.longitude || null,
         ownerId: userId,
         createdAt: serverTimestamp(),
         careGuide: finalCareGuide,
@@ -244,15 +248,73 @@ export default function AddPlant() {
             </div>
             <div className="space-y-2">
               <label className="text-sm font-bold text-stone-700 ml-1">Location</label>
-              <div className="relative">
-                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
-                <input
-                  type="text"
-                  placeholder="e.g. Living Room"
-                  className="w-full pl-12 pr-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all outline-none"
-                  value={formData.location}
-                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                />
+              <div className="flex flex-col gap-2">
+                <div className="relative">
+                  <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
+                  <input
+                    type="text"
+                    placeholder="e.g. Living Room"
+                    className="w-full pl-12 pr-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 focus:ring-2 focus:ring-green-200 transition-all outline-none"
+                    value={formData.location}
+                    onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (navigator.geolocation) {
+                      navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            latitude: pos.coords.latitude, 
+                            longitude: pos.coords.longitude,
+                            location: prev.location && prev.location !== 'GPS Location' ? prev.location : `GPS Location (${pos.coords.latitude.toFixed(2)}, ${pos.coords.longitude.toFixed(2)})`
+                          }));
+                        },
+                        (err) => {
+                          console.error("Geolocation error:", err);
+                          alert("Could not get location. Please ensure GPS is enabled.");
+                        }
+                      );
+                    }
+                  }}
+                  className={cn(
+                    "w-full py-2 text-[10px] font-bold rounded-xl transition-all uppercase tracking-widest",
+                    formData.latitude 
+                      ? "bg-blue-50 text-blue-600 border border-blue-100" 
+                      : "bg-stone-50 text-stone-500 border border-stone-100 hover:bg-stone-100"
+                  )}
+                >
+                  {formData.latitude ? '📍 GPS Coordinates Captured' : '📍 Capture Current GPS Location'}
+                </button>
+
+                {formData.latitude !== undefined && (
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-stone-400 ml-1 uppercase">Latitude</label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="Latitude"
+                        className="w-full px-3 py-2 rounded-xl border border-stone-100 bg-stone-50/50 text-xs font-bold outline-none focus:border-green-500 transition-all"
+                        value={formData.latitude || ''}
+                        onChange={(e) => setFormData({ ...formData, latitude: e.target.value ? parseFloat(e.target.value) : undefined })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-stone-400 ml-1 uppercase">Longitude</label>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="Longitude"
+                        className="w-full px-3 py-2 rounded-xl border border-stone-100 bg-stone-50/50 text-xs font-bold outline-none focus:border-green-500 transition-all"
+                        value={formData.longitude || ''}
+                        onChange={(e) => setFormData({ ...formData, longitude: e.target.value ? parseFloat(e.target.value) : undefined })}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -323,19 +385,27 @@ export default function AddPlant() {
 
           <div className="space-y-6 pt-4 border-t border-stone-100">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-bold text-stone-700 ml-1">Care Guide Details</label>
+              <div className="flex flex-col">
+                <label className="text-sm font-bold text-stone-700 ml-1">Care Guide Details</label>
+                <p className="text-[10px] text-stone-400 ml-1">Customize the care instructions or use our AI to suggest them.</p>
+              </div>
               <button
                 type="button"
                 onClick={handleGenerateAI}
                 disabled={generatingAI || !formData.species}
-                className="flex items-center gap-2 text-xs font-bold text-green-600 bg-green-50 px-3 py-1.5 rounded-xl hover:bg-green-100 transition-all disabled:opacity-50"
+                className={cn(
+                  "flex items-center gap-2 text-xs font-bold px-4 py-2 rounded-xl transition-all disabled:opacity-50",
+                  generatingAI 
+                    ? "bg-green-100 text-green-700 animate-pulse" 
+                    : "bg-stone-900 text-white hover:bg-stone-800 shadow-lg shadow-stone-200"
+                )}
               >
                 {generatingAI ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
                 ) : (
                   <Sparkles className="w-3 h-3" />
                 )}
-                Auto-fill with AI
+                {generatingAI ? 'AI is thinking...' : 'Auto-fill Care Guide'}
               </button>
             </div>
             
@@ -348,20 +418,35 @@ export default function AddPlant() {
                 { id: 'soil', label: 'Soil Type', placeholder: 'e.g. Peat-based mix with perlite.' },
                 { id: 'repotting', label: 'Repotting', placeholder: 'e.g. Repot when roots circle the base.' },
               ].map((field) => (
-                <div key={field.id} className="space-y-1.5 focus-within:z-10 group">
+                <div key={field.id} className="space-y-1.5 focus-within:z-10 group relative">
+                  <AnimatePresence>
+                    {generatingAI && (
+                      <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-10 flex items-center justify-center rounded-2xl"
+                      >
+                        <Loader2 className="w-4 h-4 text-green-500 animate-spin" />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                   <div className="flex items-center justify-between px-1">
                     <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest group-focus-within:text-green-600 transition-colors">
                       {field.label}
                     </label>
                     <VoiceInput 
-                      onResult={(text) => setCareGuide(prev => ({ ...prev, [field.id]: prev[field.id as keyof typeof careGuide] + (prev[field.id as keyof typeof careGuide] ? ' ' : '') + text }))}
+                      onResult={(text) => setCareGuide(prev => ({ ...prev, [field.id]: (careGuide as any)[field.id] + ((careGuide as any)[field.id] ? ' ' : '') + text }))}
                       placeholder={`Speak ${field.label}...`}
                     />
                   </div>
                   <textarea
                     rows={2}
                     placeholder={field.placeholder}
-                    className="w-full px-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 focus:ring-4 focus:ring-green-500/10 transition-all outline-none text-sm resize-none scrollbar-hide bg-stone-50/30 focus:bg-white"
+                    className={cn(
+                      "w-full px-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 focus:ring-4 focus:ring-green-500/10 transition-all outline-none text-sm resize-none scrollbar-hide bg-stone-50/30 focus:bg-white",
+                      generatingAI && "blur-[2px]"
+                    )}
                     value={(careGuide as any)[field.id]}
                     onChange={(e) => setCareGuide({ ...careGuide, [field.id]: e.target.value })}
                   />

@@ -131,12 +131,33 @@
         "foliage": { "type": "number" }
       },
       "required": ["id", "plantId", "date", "height", "foliage"]
+    },
+    "FarmDiaryEntry": {
+      "title": "FarmDiaryEntry",
+      "description": "Daily farming activity log with financial data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "date": { "type": "string", "format": "date" },
+        "category": { "type": "string", "enum": ["Planting", "Fertilizing", "Harvesting", "Expense", "Irrigation", "Pest Control", "General"] },
+        "expense": { "type": "number" },
+        "income": { "type": "number" },
+        "notes": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "date", "category"]
     }
   },
   "firestore": {
     "/users/{uid}": {
       "schema": "User",
       "description": "User profiles"
+    },
+    "/diaryEntries/{entryId}": {
+      "schema": "FarmDiaryEntry",
+      "description": "User's daily farming activity logs"
     },
     "/plants/{plantId}": {
       "schema": "Plant",

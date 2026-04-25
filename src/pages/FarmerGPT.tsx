@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
 import VoiceInput from '../components/VoiceInput';
-import { getFarmerGPTResponse } from '../services/geminiService';
+import { getFarmerGPTResponse, getFarmerGPTResponseStream } from '../services/geminiService';
 import { useTranslation } from '../context/LanguageContext';
 
 interface Message {
@@ -41,26 +41,31 @@ export default function FarmerGPT() {
     setInput('');
     setIsLoading(true);
 
-    try {
-      const responseText = await getFarmerGPTResponse(input);
-      
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: responseText || "I'm sorry, I couldn't process that request.",
-        timestamp: new Date(),
-      };
+    const assistantMessageId = (Date.now() + 1).toString();
+    const assistantMessage: Message = {
+      id: assistantMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: new Date(),
+    };
 
-      setMessages(prev => [...prev, assistantMessage]);
+    setMessages(prev => [...prev, assistantMessage]);
+
+    try {
+      let fullResponse = '';
+      await getFarmerGPTResponseStream(input, (chunk) => {
+        fullResponse += chunk;
+        setMessages(prev => prev.map(msg => 
+          msg.id === assistantMessageId ? { ...msg, content: fullResponse } : msg
+        ));
+      });
     } catch (error) {
       console.error("Chat error:", error);
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: "Error: I'm having trouble connecting right now. Please try again later.",
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errorMessage]);
+      setMessages(prev => prev.map(msg => 
+        msg.id === assistantMessageId 
+          ? { ...msg, content: "Error: I'm having trouble connecting right now. Please try again later." } 
+          : msg
+      ));
     } finally {
       setIsLoading(false);
     }

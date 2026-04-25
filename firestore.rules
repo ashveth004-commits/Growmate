@@ -9,11 +9,13 @@ service cloud.firestore {
     }
 
     function isOwner(userId) {
-      return true; // Allow access to any user doc for testing
+      let currentUserId = request.auth != null ? request.auth.uid : 'guest-123';
+      return userId == currentUserId;
     }
 
     function isPlantOwner(plantId) {
-      return true; // Allow access to any plant for testing
+      let currentUserId = request.auth != null ? request.auth.uid : 'guest-123';
+      return get(/databases/$(database)/documents/plants/$(plantId)).data.ownerId == currentUserId;
     }
 
     function isValidUser(data) {
@@ -32,12 +34,17 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    match /diaryEntries/{entryId} {
+      allow read, update, delete: if isAuthenticated() && resource.data.userId == (request.auth != null ? request.auth.uid : 'guest-123');
+      allow create: if isAuthenticated() && request.resource.data.userId == (request.auth != null ? request.auth.uid : 'guest-123');
+    }
+
     match /users/{userId} {
       allow read, write: if isOwner(userId) && (request.method != 'create' || isValidUser(request.resource.data));
     }
 
     match /plants/{plantId} {
-      allow read, update, delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+      allow read, update, delete: if isAuthenticated() && resource.data.ownerId == (request.auth != null ? request.auth.uid : 'guest-123');
       allow create: if isAuthenticated() && isValidPlant(request.resource.data);
 
       match /schedules/{scheduleId} {

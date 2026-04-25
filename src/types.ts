@@ -23,6 +23,8 @@ export interface Plant {
   description?: string;
   careGuide?: CareGuide;
   fertilizerTimeline?: FertilizerEvent[];
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface CareGuide {
@@ -139,4 +141,16 @@ export interface CropPredictionResult {
   estimatedCosts: number;
   factors: string[];
   recommendations: string[];
+}
+
+export interface FarmDiaryEntry {
+  id: string;
+  userId: string;
+  title: string;
+  date: string;
+  category: 'Planting' | 'Fertilizing' | 'Harvesting' | 'Expense' | 'Irrigation' | 'Pest Control' | 'General';
+  expense?: number;
+  income?: number;
+  notes?: string;
+  createdAt: string;
 }

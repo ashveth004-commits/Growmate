@@ -106,6 +106,30 @@ export async function getPlantChatResponse(plant: Plant, message: string, histor
   return response.text;
 }
 
+export async function getPlantChatResponseStream(plant: Plant, message: string, onChunk: (text: string) => void) {
+  const systemInstruction = `You are a professional plant care assistant for a specific plant: ${plant.name} (${plant.species}).
+  Plant Context:
+  - Location: ${plant.location} (${plant.isIndoor ? 'Indoor' : 'Outdoor'})
+  - Age: ${plant.age}
+  - Health Status: ${plant.healthStatus}
+  - Care Guide: ${JSON.stringify(plant.careGuide)}
+  - Fertilizer Schedule: ${JSON.stringify(plant.fertilizerTimeline)}
+  
+  Answer the user's questions about this specific plant using the provided context. Be helpful, encouraging, and accurate.`;
+
+  const result = await ai.models.generateContentStream({
+    model: "gemini-3-flash-preview",
+    contents: message,
+    config: {
+      systemInstruction,
+    }
+  });
+
+  for await (const chunk of result) {
+    onChunk(chunk.text || "");
+  }
+}
+
 export async function generateWeatherSuggestions(weather: any, plants: Plant[]) {
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
@@ -265,4 +289,55 @@ export async function getFarmerGPTResponse(message: string) {
   });
 
   return response.text;
+}
+
+export async function getFarmerGPTResponseStream(message: string, onChunk: (text: string) => void) {
+  const systemInstruction = `You are Farmer GPT, an expert agricultural consultant with decades of experience in farming, horticulture, and plant science. 
+  Your goal is to help farmers and gardeners with:
+  1. Crop selection based on season and region.
+  2. Soil health and preparation.
+  3. Pest and disease identification and management.
+  4. Irrigation strategies.
+  5. Sustainable and organic farming practices.
+  6. Market trends and agricultural technology.
+  
+  Keep your tone professional, advisory, and respectful of local farming traditions while providing modern scientific insights. 
+  If a question is not about agriculture, gardening, or plants, politely redirect the user back to farming topics.`;
+
+  const result = await ai.models.generateContentStream({
+    model: "gemini-3-flash-preview",
+    contents: message,
+    config: {
+      systemInstruction,
+    }
+  });
+
+  for await (const chunk of result) {
+    onChunk(chunk.text || "");
+  }
+}
+
+export async function getPestTreatmentStream(query: string, onChunk: (text: string) => void) {
+  const systemInstruction = `You are a specialist in agricultural pest and disease management. 
+  Your primary task is to identify pests/diseases and provide detailed treatment methods including:
+  1. Identification (physical description/symptoms).
+  2. Affected crops.
+  3. Chemical control methods (pesticides/fungicides).
+  4. Organic/Traditional control methods.
+  5. Preventive measures.
+  
+  Format your response clearly using markdown with headings, lists, and bold text for key terms. 
+  Keep advice practical and safe. If you recommend chemicals, emphasize safety protocols.`;
+
+  const result = await ai.models.generateContentStream({
+    model: "gemini-3-flash-preview",
+    contents: query,
+    config: {
+      systemInstruction,
+    }
+  });
+
+  for await (const chunk of result) {
+    onChunk(chunk.text || "");
+  }
 }

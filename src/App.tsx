@@ -4,7 +4,7 @@ import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider, signOut, User 
 import { auth, db } from './firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { UserProfile } from './types';
-import { Leaf, LayoutDashboard, Calendar as CalendarIcon, User as UserIcon, Plus, LogOut, MessageCircle, TrendingUp, ShoppingBag, Video, Languages } from 'lucide-react';
+import { Leaf, LayoutDashboard, Calendar as CalendarIcon, User as UserIcon, Plus, LogOut, MessageCircle, TrendingUp, ShoppingBag, Video, Languages, BookOpen, FileText, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { LanguageProvider, useTranslation } from './context/LanguageContext';
@@ -20,6 +20,8 @@ import CropPredictor from './pages/CropPredictor';
 import Marketplace from './pages/Marketplace';
 import FarmerGPT from './pages/FarmerGPT';
 import PlantationGuide from './pages/PlantationGuide';
+import KnowledgeBase from './pages/KnowledgeBase';
+import FarmDiary from './pages/FarmDiary';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -39,10 +41,55 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }, []);
 
   const isGuest = localStorage.getItem('isGuest') === 'true';
-  if (loading) return <div className="flex items-center justify-center h-screen"><Leaf className="animate-bounce text-green-600 w-12 h-12" /></div>;
+  if (loading) return <div className="flex items-center justify-center h-screen"><img src="/logo.png" alt="Loading..." className="animate-bounce w-16 h-16 object-contain" /></div>;
   if (!user && !isGuest) return <Navigate to="/login" />;
 
   return <>{children}</>;
+}
+
+function InstallAppButton() {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+  const { t } = useTranslation();
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstallable(false);
+    }
+
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsInstallable(false);
+    }
+    setDeferredPrompt(null);
+  };
+
+  if (!isInstallable) return null;
+
+  return (
+    <button 
+      onClick={handleInstall}
+      className="w-full flex items-center gap-3 px-4 py-3 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-all font-bold text-xs uppercase tracking-widest mt-2"
+    >
+      <Download className="w-4 h-4" />
+      {t('download_app') || 'Install GrowMate'}
+    </button>
+  );
 }
 
 function Layout({ children }: { children: React.ReactNode }) {
@@ -84,10 +131,8 @@ function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-stone-50 flex flex-col md:flex-row">
       {/* Sidebar */}
       <aside className="w-full md:w-64 bg-white border-b md:border-r border-stone-200 flex flex-col sticky top-0 z-50 md:h-screen">
-        <div className="p-6 flex items-center gap-2">
-          <div className="bg-green-600 p-2 rounded-xl">
-            <Leaf className="text-white w-6 h-6" />
-          </div>
+        <div className="p-6 flex items-center gap-3">
+          <img src="/logo.png" alt="GrowMate Logo" className="w-10 h-10 object-contain rounded-xl" />
           <h1 className="text-xl font-bold text-stone-900 tracking-tight">GrowMate</h1>
         </div>
 
@@ -108,6 +153,14 @@ function Layout({ children }: { children: React.ReactNode }) {
             <CalendarIcon className="w-5 h-5" />
             {t('calendar')}
           </Link>
+          <Link to="/knowledge-base" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
+            <BookOpen className="w-5 h-5" />
+            {t('knowledge_base')}
+          </Link>
+          <Link to="/farm-diary" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
+            <FileText className="w-5 h-5" />
+            {t('farm_diary')}
+          </Link>
           <Link to="/crop-predictor" className="flex items-center gap-3 px-4 py-3 text-stone-600 hover:bg-stone-50 hover:text-green-600 rounded-xl transition-all font-medium">
             <TrendingUp className="w-5 h-5" />
             {t('crop_predictor')}
@@ -127,31 +180,6 @@ function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="p-4 space-y-4 border-t border-stone-100">
-          {/* Language Selector */}
-          <div className="px-4">
-            <div className="flex items-center gap-2 mb-2 text-[10px] font-bold text-stone-400 uppercase tracking-widest">
-              <Languages className="w-3 h-3" />
-              {t('language')}
-            </div>
-            <div className="grid grid-cols-5 gap-1">
-              {languages.map((lang) => (
-                <button
-                  key={lang.code}
-                  onClick={() => setLanguage(lang.code)}
-                  className={cn(
-                    "py-2 rounded-lg text-xs font-bold transition-all border",
-                    language === lang.code 
-                      ? "bg-green-600 text-white border-green-600 shadow-md" 
-                      : "bg-white text-stone-600 border-stone-200 hover:bg-stone-50"
-                  )}
-                  title={lang.name}
-                >
-                  {lang.code.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="flex items-center gap-3 px-4 py-3">
             <img src={displayUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayUser?.uid}`} alt="Avatar" className="w-8 h-8 rounded-full border border-stone-200" />
             <div className="flex-1 min-w-0">
@@ -159,13 +187,36 @@ function Layout({ children }: { children: React.ReactNode }) {
               <p className="text-xs text-stone-500 truncate">{displayEmail}</p>
             </div>
           </div>
+
+          <div className="px-4 py-2 space-y-2">
+            <label className="text-[10px] font-bold text-stone-400 uppercase tracking-widest flex items-center gap-2">
+              <Languages className="w-3 h-3" />
+              {t('language')}
+            </label>
+            <div className="grid grid-cols-5 gap-1">
+              {languages.map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => setLanguage(lang.code)}
+                  className={cn(
+                    "py-1.5 rounded-lg text-[10px] font-bold transition-all border",
+                    language === lang.code
+                      ? "bg-green-600 text-white border-green-600 shadow-sm"
+                      : "bg-white text-stone-500 border-stone-200 hover:border-green-200"
+                  )}
+                >
+                  {lang.code.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <InstallAppButton />
+          
           <button onClick={handleLogout} className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all font-medium">
             <LogOut className="w-5 h-5" />
             {t('logout')}
           </button>
-          <p className="text-[10px] font-bold text-stone-300 uppercase tracking-[0.2em] text-center">
-            an ashveth creation
-          </p>
         </div>
       </aside>
 
@@ -189,6 +240,8 @@ export default function App() {
           <Route path="/add-plant" element={<ProtectedRoute><Layout><AddPlant /></Layout></ProtectedRoute>} />
           <Route path="/plant/:id" element={<ProtectedRoute><Layout><PlantProfile /></Layout></ProtectedRoute>} />
           <Route path="/calendar" element={<ProtectedRoute><Layout><Calendar /></Layout></ProtectedRoute>} />
+          <Route path="/knowledge-base" element={<ProtectedRoute><Layout><KnowledgeBase /></Layout></ProtectedRoute>} />
+          <Route path="/farm-diary" element={<ProtectedRoute><Layout><FarmDiary /></Layout></ProtectedRoute>} />
           <Route path="/crop-predictor" element={<ProtectedRoute><Layout><CropPredictor /></Layout></ProtectedRoute>} />
           <Route path="/marketplace" element={<ProtectedRoute><Layout><Marketplace /></Layout></ProtectedRoute>} />
           <Route path="/farmer-gpt" element={<ProtectedRoute><Layout><FarmerGPT /></Layout></ProtectedRoute>} />

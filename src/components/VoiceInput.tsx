@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Mic, MicOff, Loader2, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { refineFarmerVoiceInput } from '../services/geminiService';
@@ -15,6 +15,12 @@ export default function VoiceInput({ onResult, className, placeholder = "Speak n
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recognition, setRecognition] = useState<any>(null);
+  const onResultRef = useRef(onResult);
+
+  // Update ref when onResult changes
+  useEffect(() => {
+    onResultRef.current = onResult;
+  }, [onResult]);
 
   useEffect(() => {
     // @ts-ignore
@@ -33,10 +39,10 @@ export default function VoiceInput({ onResult, className, placeholder = "Speak n
 
         try {
           const refinedText = await refineFarmerVoiceInput(transcript);
-          onResult(refinedText);
+          onResultRef.current(refinedText);
         } catch (err) {
           console.error("AI Refinement error:", err);
-          onResult(transcript); // Fallback to raw transcript
+          onResultRef.current(transcript); // Fallback to raw transcript
         } finally {
           setIsProcessing(false);
         }
@@ -54,7 +60,7 @@ export default function VoiceInput({ onResult, className, placeholder = "Speak n
 
       setRecognition(recog);
     }
-  }, [onResult]);
+  }, []);
 
   const toggleListening = useCallback(() => {
     if (!recognition) {

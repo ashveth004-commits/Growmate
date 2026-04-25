@@ -1,43 +1,115 @@
 import { useState, useEffect } from 'react';
-import { auth, db } from '../firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { UserProfile } from '../types';
-import { User as UserIcon, Mail, Shield, Settings, Bell, Leaf, Save, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { User, Bell, Shield, Settings, LogOut, ChevronRight, Mail, Phone, MapPin, Globe, Check, Download } from 'lucide-react';
+import { useTranslation } from '../context/LanguageContext';
+import { auth, db } from '../firebase';
+import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
+import { cn } from '../lib/utils';
 
 export default function Profile() {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const { t, language, setLanguage } = useTranslation();
+  const navigate = useNavigate();
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const isGuest = localStorage.getItem('isGuest') === 'true';
 
-  useEffect(() => {
-    const userId = auth.currentUser?.uid || (isGuest ? 'guest-123' : null);
-    
-    if (!userId) return;
+  const [notificationSettings, setNotificationSettings] = useState({
+    careReminders: true,
+    weatherAlerts: true,
+    communityUpdates: false,
+  });
 
-    const fetchProfile = async () => {
-      const docRef = doc(db, 'users', userId);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        setProfile(docSnap.data() as UserProfile);
-      } else if (isGuest) {
-        setProfile({
-          uid: 'guest-123',
-          email: 'guest@example.com',
-          displayName: 'Guest User',
-          photoURL: '',
-          role: 'user',
-          createdAt: new Date().toISOString()
-        });
+  const [appSettings, setAppSettings] = useState({
+    measurementUnit: 'kg',
+  });
+
+  useEffect(() => {
+    const isGuestUser = localStorage.getItem('isGuest') === 'true';
+    if (isGuestUser) {
+      setLoading(false);
+      return;
+    }
+
+    return onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        // Load additional settings from Firestore if needed
+        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          if (data.notifications) setNotificationSettings(data.notifications);
+          if (data.settings) setAppSettings(data.settings);
+        }
       }
       setLoading(false);
-    };
-
-    fetchProfile();
+    });
   }, []);
 
-  const displayUser = auth.currentUser || (isGuest ? {
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstallable(false);
+    }
+
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsInstallable(false);
+    }
+    setDeferredPrompt(null);
+  };
+
+  const handleToggleNotification = (key: keyof typeof notificationSettings) => {
+    setNotificationSettings(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
+  const handleSaveSettings = async () => {
+    if (isGuest) return;
+    if (!user) return;
+
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        notifications: notificationSettings,
+        settings: appSettings,
+        updatedAt: new Date().toISOString()
+      });
+      // Show success toast or feedback
+    } catch (error) {
+      console.error('Error saving settings:', error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    localStorage.removeItem('isGuest');
+    await signOut(auth);
+    navigate('/login');
+  };
+
+  const displayUser = user || (isGuest ? {
     displayName: 'Guest User',
     email: 'guest@example.com',
     uid: 'guest-123',
@@ -45,123 +117,255 @@ export default function Profile() {
     phoneNumber: null
   } : null);
 
-  const displayName = displayUser?.displayName || displayUser?.phoneNumber || 'User';
-  const displayEmail = displayUser?.email || (displayUser?.phoneNumber ? 'Phone Verified' : '');
-
-  if (loading) return <div className="flex items-center justify-center h-64"><Leaf className="animate-bounce text-green-600 w-8 h-8" /></div>;
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-8 h-8 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8">
+    <div className="max-w-4xl mx-auto space-y-8 pb-12">
       <header>
-        <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Profile & Settings</h1>
-        <p className="text-stone-500 mt-1">Manage your account and plant care preferences.</p>
+        <h1 className="text-3xl font-bold text-stone-900 tracking-tight">{t('profile')}</h1>
+        <p className="text-stone-500 mt-1">{t('account_settings')}</p>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="md:col-span-1 space-y-6">
-          <div className="bg-white rounded-3xl border border-stone-100 shadow-sm p-8 text-center">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Left Column: User Info Card */}
+        <div className="lg:col-span-1 space-y-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-[2rem] border border-stone-100 shadow-sm p-8 text-center"
+          >
             <div className="relative inline-block mb-4">
-              <img 
-                src={displayUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayUser?.uid}`} 
-                alt="Avatar" 
-                className="w-24 h-24 rounded-full border-4 border-stone-50 shadow-inner"
+              <img
+                src={displayUser?.photoURL || `https://api.dicebear.com/7.x/avataaars/svg?seed=${displayUser?.uid}`}
+                alt="Avatar"
+                className="w-24 h-24 rounded-full border-4 border-stone-50 shadow-sm"
               />
-              <div className="absolute bottom-0 right-0 bg-green-600 p-2 rounded-full border-4 border-white">
-                <Settings className="text-white w-4 h-4" />
+              <div className="absolute bottom-1 right-1 bg-green-600 p-1.5 rounded-full border-2 border-white">
+                <Check className="w-3 h-3 text-white" />
               </div>
             </div>
-            <h2 className="text-xl font-bold text-stone-900">{displayName}</h2>
-            <p className="text-stone-500 text-sm">{displayEmail}</p>
-            <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 bg-stone-100 rounded-full text-[10px] font-bold uppercase tracking-wider text-stone-600">
-              <Shield className="w-3 h-3" />
-              {profile?.role || 'User'}
+            <h2 className="text-xl font-bold text-stone-900">{displayUser?.displayName || 'User'}</h2>
+            <p className="text-sm text-stone-500 mb-6">{displayUser?.email}</p>
+            
+            <div className="space-y-3 text-left">
+              <div className="flex items-center gap-3 p-3 bg-stone-50 rounded-xl">
+                <Mail className="w-4 h-4 text-stone-400" />
+                <span className="text-xs font-medium text-stone-600 truncate">{displayUser?.email}</span>
+              </div>
+              <div className="flex items-center gap-3 p-3 bg-stone-50 rounded-xl">
+                <Phone className="w-4 h-4 text-stone-400" />
+                <span className="text-xs font-medium text-stone-600">
+                  {displayUser?.phoneNumber || (isGuest ? '+91 98765 43210' : t('not_provided'))}
+                </span>
+              </div>
             </div>
-          </div>
 
-          <nav className="bg-white rounded-3xl border border-stone-100 shadow-sm overflow-hidden">
-            <button className="w-full flex items-center gap-3 px-6 py-4 text-stone-900 hover:bg-stone-50 transition-all font-bold text-sm border-b border-stone-50">
-              <UserIcon className="w-5 h-5 text-stone-400" />
-              Personal Info
+            <button
+              onClick={handleLogout}
+              className="w-full mt-8 flex items-center justify-center gap-2 py-3 px-4 bg-red-50 text-red-600 rounded-2xl font-bold hover:bg-red-100 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              {t('logout')}
             </button>
-            <button className="w-full flex items-center gap-3 px-6 py-4 text-stone-500 hover:bg-stone-50 transition-all font-bold text-sm border-b border-stone-50">
-              <Bell className="w-5 h-5 text-stone-400" />
-              Notifications
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-green-600 rounded-[2rem] p-8 text-white"
+          >
+            <h3 className="font-bold flex items-center gap-2 mb-2">
+              <Globe className="w-4 h-4" />
+              GrowMate Premium
+            </h3>
+            <p className="text-xs text-green-100 mb-6 leading-relaxed">
+              Unlock advanced crop analysis, unlimited Farmer GPT consultations, and detailed market insights.
+            </p>
+            <button className="w-full py-3 bg-white text-green-600 rounded-xl font-bold text-sm hover:bg-green-50 transition-colors">
+              Upgrade Now
             </button>
-            <button className="w-full flex items-center gap-3 px-6 py-4 text-stone-500 hover:bg-stone-50 transition-all font-bold text-sm">
-              <Shield className="w-5 h-5 text-stone-400" />
-              Privacy & Security
-            </button>
-          </nav>
+          </motion.div>
         </div>
 
-        <div className="md:col-span-2 space-y-6">
-          <section className="bg-white rounded-3xl border border-stone-100 shadow-sm p-8">
-            <h3 className="text-lg font-bold text-stone-900 mb-6">Personal Information</h3>
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-stone-700 ml-1">Full Name</label>
-                <div className="relative">
-                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
-                  <input
-                    type="text"
-                    defaultValue={displayName === displayUser?.phoneNumber ? '' : displayName}
-                    className="w-full pl-12 pr-4 py-3 rounded-2xl border border-stone-200 focus:border-green-500 outline-none transition-all"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-stone-700 ml-1">Email Address</label>
-                <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
-                  <input
-                    disabled
-                    type="email"
-                    defaultValue={displayUser?.email || ''}
-                    placeholder="No email provided"
-                    className="w-full pl-12 pr-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-stone-400 cursor-not-allowed outline-none"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-stone-700 ml-1">Phone Number</label>
-                <div className="relative">
-                  <Settings className="absolute left-4 top-1/2 -translate-y-1/2 text-stone-400 w-5 h-5" />
-                  <input
-                    disabled
-                    type="tel"
-                    defaultValue={displayUser?.phoneNumber || ''}
-                    placeholder="No phone number provided"
-                    className="w-full pl-12 pr-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-stone-400 cursor-not-allowed outline-none"
-                  />
-                </div>
-              </div>
-              <button className="flex items-center gap-2 bg-stone-900 text-white px-8 py-3 rounded-2xl font-bold hover:bg-stone-800 transition-all ml-auto">
-                <Save className="w-5 h-5" />
-                Save Changes
-              </button>
+        {/* Right Column: Settings Sections */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* NotificationsSection */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="bg-white rounded-[2rem] border border-stone-100 shadow-sm overflow-hidden"
+          >
+            <div className="p-6 border-b border-stone-50 bg-stone-50/50 flex items-center gap-3 text-stone-900">
+              <Bell className="w-5 h-5 text-green-600" />
+              <h3 className="font-bold">{t('notification_prefs')}</h3>
             </div>
-          </section>
-
-          <section className="bg-white rounded-3xl border border-stone-100 shadow-sm p-8">
-            <h3 className="text-lg font-bold text-stone-900 mb-6">Notification Preferences</h3>
-            <div className="space-y-4">
+            <div className="p-8 space-y-6">
               {[
-                { label: 'Watering Reminders', desc: 'Get notified when your plants need water.' },
-                { label: 'Fertilizer Alerts', desc: 'Monthly schedule for your plants nutrition.' },
-                { label: 'Health Warnings', desc: 'AI alerts when potential issues are detected.' }
-              ].map((item, idx) => (
-                <div key={idx} className="flex items-center justify-between p-4 rounded-2xl hover:bg-stone-50 transition-all group">
+                { id: 'careReminders', label: t('care_reminders'), desc: 'Receive alerts for watering, fertilizing, and harvesting.', icon: User },
+                { id: 'weatherAlerts', label: t('weather_alerts'), desc: 'Critical weather alerts specific to your farm location.', icon: Globe },
+                { id: 'communityUpdates', label: t('community_updates'), desc: 'Updates from the marketplace and community forum.', icon: Globe }
+              ].map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="font-bold text-stone-900">{item.label}</p>
-                    <p className="text-xs text-stone-500">{item.desc}</p>
+                    <h4 className="text-sm font-bold text-stone-900">{item.label}</h4>
+                    <p className="text-xs text-stone-500 mt-1">{item.desc}</p>
                   </div>
-                  <div className="w-12 h-6 bg-green-600 rounded-full relative cursor-pointer">
-                    <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full shadow-sm" />
-                  </div>
+                  <button
+                    onClick={() => handleToggleNotification(item.id as keyof typeof notificationSettings)}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none",
+                      notificationSettings[item.id as keyof typeof notificationSettings] ? "bg-green-600" : "bg-stone-200"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                        notificationSettings[item.id as keyof typeof notificationSettings] ? "translate-x-5" : "translate-x-0"
+                      )}
+                    />
+                  </button>
                 </div>
               ))}
             </div>
-          </section>
+          </motion.div>
+
+          {/* App Settings */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="bg-white rounded-[2rem] border border-stone-100 shadow-sm overflow-hidden"
+          >
+            <div className="p-6 border-b border-stone-50 bg-stone-50/50 flex items-center gap-3 text-stone-900">
+              <Settings className="w-5 h-5 text-green-600" />
+              <h3 className="font-bold">{t('app_settings')}</h3>
+            </div>
+            <div className="p-8 space-y-8">
+              <div className="space-y-4">
+                <label className="text-sm font-bold text-stone-700">{t('language_selection')}</label>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {[
+                    { code: 'en', name: 'English' },
+                    { code: 'hi', name: 'हिन्दी' },
+                    { code: 'mr', name: 'मराठी' },
+                    { code: 'ta', name: 'தமிழ்' },
+                    { code: 'te', name: 'తెలుగు' }
+                  ].map((lang) => (
+                    <button
+                      key={lang.code}
+                      onClick={() => setLanguage(lang.code as any)}
+                      className={cn(
+                        "py-3 rounded-2xl text-xs font-bold border transition-all",
+                        language === lang.code 
+                          ? "bg-green-50 border-green-200 text-green-700 ring-2 ring-green-600/10" 
+                          : "bg-white border-stone-200 text-stone-600 hover:bg-stone-50"
+                      )}
+                    >
+                      {lang.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-stone-50">
+                <label className="text-sm font-bold text-stone-700 block">{t('measurement_unit')}</label>
+                <div className="flex gap-3">
+                  {['kg', 'quintal', 'ton'].map((unit) => (
+                    <button
+                      key={unit}
+                      onClick={() => setAppSettings(prev => ({ ...prev, measurementUnit: unit }))}
+                      className={cn(
+                        "px-6 py-2 rounded-xl text-xs font-bold border transition-all",
+                        appSettings.measurementUnit === unit
+                          ? "bg-stone-900 border-stone-900 text-white"
+                          : "bg-white border-stone-200 text-stone-600"
+                      )}
+                    >
+                      {unit.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-8 bg-stone-50 border-t border-stone-100 flex justify-end">
+              <button
+                disabled={saving || isGuest}
+                onClick={handleSaveSettings}
+                className={cn(
+                  "flex items-center gap-2 py-3 px-8 rounded-2xl font-bold transition-all shadow-lg shadow-green-600/10",
+                  isGuest 
+                    ? "bg-stone-200 text-stone-400 cursor-not-allowed"
+                    : "bg-green-600 text-white hover:bg-green-700 active:scale-95"
+                )}
+              >
+                {saving ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <>
+                    <Check className="w-5 h-5" />
+                    {t('save_changes')}
+                  </>
+                )}
+              </button>
+            </div>
+          </motion.div>
+          
+          {/* Download App Section */}
+          {isInstallable && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+              className="bg-blue-600 rounded-[2rem] border border-blue-500 shadow-lg shadow-blue-200 p-8 text-white relative overflow-hidden group"
+            >
+              <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
+                <Download className="w-24 h-24" />
+              </div>
+              <div className="relative z-10">
+                <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
+                  <Download className="w-5 h-5" />
+                  Install GrowMate App
+                </h3>
+                <p className="text-blue-100 text-sm mb-6 leading-relaxed max-w-sm">
+                  Experience GrowMate with faster loading, offline access, and a better mobile experience by installing it on your device.
+                </p>
+                <button 
+                  onClick={handleInstall}
+                  className="bg-white text-blue-600 px-8 py-3 rounded-2xl font-bold text-sm hover:bg-blue-50 transition-all active:scale-95 shadow-md"
+                >
+                  {t('download_app')}
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Privacy & Security */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="group cursor-pointer bg-white rounded-[2rem] border border-stone-100 shadow-sm p-6 flex items-center justify-between hover:border-green-200 transition-colors"
+          >
+            <div className="flex items-center gap-4">
+              <div className="bg-stone-50 p-3 rounded-2xl group-hover:bg-green-50 transition-colors">
+                <Shield className="w-6 h-6 text-stone-400 group-hover:text-green-600" />
+              </div>
+              <div>
+                <h4 className="font-bold text-stone-900">Privacy & Security</h4>
+                <p className="text-xs text-stone-500 mt-0.5">Manage your data and account security.</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-stone-300 group-hover:text-green-600 transition-colors" />
+          </motion.div>
         </div>
       </div>
     </div>

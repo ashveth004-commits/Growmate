@@ -10,22 +10,25 @@ export const auth = getAuth(app);
 // Initialize Firestore with force long polling to avoid connection issues in some environments
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
+  experimentalAutoDetectLongPolling: false,
 }, firebaseConfig.firestoreDatabaseId);
 
-// Test Connection
+// Test Connection with a small delay to allow network to settle
 async function testConnection() {
-  try {
-    // Only try to connect if we have a config
-    if (firebaseConfig.projectId) {
-      await getDocFromServer(doc(db, 'test', 'connection'));
-      console.log('Firestore connection verified');
+  setTimeout(async () => {
+    try {
+      // Only try to connect if we have a config
+      if (firebaseConfig.projectId) {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+        console.log('Firestore connection verified');
+      }
+    } catch (error) {
+      console.warn('Firestore connectivity warning:', error);
+      if(error instanceof Error && (error.message.includes('the client is offline') || error.message.includes('unavailable'))) {
+        console.error("Please check your Firebase configuration or network. Firestore is currently unreachable.");
+      }
     }
-  } catch (error) {
-    console.warn('Firestore connectivity warning:', error);
-    if(error instanceof Error && (error.message.includes('the client is offline') || error.message.includes('unavailable'))) {
-      console.error("Please check your Firebase configuration or network. Firestore is currently unreachable.");
-    }
-  }
+  }, 2000);
 }
 
 testConnection();

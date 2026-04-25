@@ -203,11 +203,12 @@ export default function PlantationGuide() {
             >
               <div className="aspect-video w-full bg-stone-800">
                 <iframe
-                  src={`https://www.youtube.com/embed/${selectedVideo.youtubeId}?autoplay=1&rel=0&origin=${window.location.origin}`}
+                  src={`https://www.youtube-nocookie.com/embed/${selectedVideo.youtubeId}?autoplay=1&rel=0&enablejsapi=1&origin=${window.location.origin}`}
                   title={selectedVideo.title}
                   className="w-full h-full border-none"
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                   allowFullScreen
+                  referrerPolicy="strict-origin-when-cross-origin"
                 />
               </div>
               <div className="p-8 bg-stone-900 text-white">
@@ -219,6 +220,17 @@ export default function PlantationGuide() {
                     </div>
                     <h2 className="text-3xl font-bold leading-tight">{selectedVideo.title}</h2>
                     <p className="text-stone-400 text-base max-w-3xl leading-relaxed">{selectedVideo.description}</p>
+                    <div className="pt-4 flex gap-3">
+                      <a 
+                        href={`https://www.youtube.com/watch?v=${selectedVideo.youtubeId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl font-bold text-sm inline-flex items-center gap-2 transition-all shadow-lg shadow-red-900/20 active:scale-95"
+                      >
+                        <Play className="w-4 h-4 fill-current" />
+                        Watch on YouTube
+                      </a>
+                    </div>
                   </div>
                   <button 
                     onClick={() => setSelectedVideo(null)}

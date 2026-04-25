@@ -4,11 +4,11 @@ import { doc, getDoc, collection, onSnapshot, query, orderBy, addDoc, updateDoc,
 import { db, auth, storage, handleFirestoreError, OperationType } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Plant, TimelineEvent, HealthIssue, CareSchedule, WateringLog, FertilizerLog } from '../types';
-import { diagnosePlantProblem, getPlantChatResponse } from '../services/geminiService';
+import { diagnosePlantProblem, getPlantChatResponse, getPlantChatResponseStream } from '../services/geminiService';
 import { 
   Leaf, Droplets, Sun, Thermometer, Wind, Sprout, 
   Calendar as CalendarIcon, History, MessageCircle, 
-  AlertCircle, CheckCircle2, Plus, Send, Loader2, Ruler,
+  AlertCircle, CheckCircle2, Plus, Send, Loader2, Ruler, MapPin,
   ChevronRight, ArrowLeft, Info, Sparkles, Edit2, X, Save, Trash2,
   Camera, Scissors, Bell, BellOff
 } from 'lucide-react';
@@ -16,6 +16,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { format, formatDistanceToNow, parseISO, intervalToDuration } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../lib/utils';
+import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps';
 import GrowthChart from '../components/GrowthChart';
 import VoiceInput from '../components/VoiceInput';
 
@@ -37,7 +38,9 @@ export default function PlantProfile() {
     name: '',
     species: '',
     location: '',
-    plantationDate: ''
+    plantationDate: '',
+    latitude: undefined as number | undefined,
+    longitude: undefined as number | undefined
   });
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -51,8 +54,16 @@ export default function PlantProfile() {
 
   // Chat State
   const [chatMessage, setChatMessage] = useState('');
-  const [chatHistory, setChatHistory] = useState<{ role: string, content: string }[]>([]);
+  const [chatHistory, setChatHistory] = useState<{ id: string, role: string, content: string, timestamp: Date }[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom of chat
+  useEffect(() => {
+    if (activeTab === 'chat') {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatHistory, activeTab]);
 
   // Measurement Logging State
   const [measurementForm, setMeasurementForm] = useState({
@@ -103,7 +114,9 @@ export default function PlantProfile() {
           name: data.name,
           species: data.species,
           location: data.location,
-          plantationDate: data.plantationDate || ''
+          plantationDate: data.plantationDate || '',
+          latitude: data.latitude,
+          longitude: data.longitude
         });
       } else {
         navigate('/');
@@ -221,15 +234,27 @@ export default function PlantProfile() {
     if (!plant || !chatMessage.trim() || chatLoading) return;
 
     const userMsg = chatMessage;
+    const userMsgId = Date.now().toString();
     setChatMessage('');
-    setChatHistory(prev => [...prev, { role: 'user', content: userMsg }]);
+    setChatHistory(prev => [...prev, { id: userMsgId, role: 'user', content: userMsg, timestamp: new Date() }]);
     setChatLoading(true);
 
+    const assistantMsgId = (Date.now() + 1).toString();
+    setChatHistory(prev => [...prev, { id: assistantMsgId, role: 'assistant', content: '', timestamp: new Date() }]);
+
     try {
-      const response = await getPlantChatResponse(plant, userMsg, []);
-      setChatHistory(prev => [...prev, { role: 'assistant', content: response || 'Sorry, I couldn\'t process that.' }]);
+      let fullResponse = '';
+      await getPlantChatResponseStream(plant, userMsg, (chunk) => {
+        fullResponse += chunk;
+        setChatHistory(prev => prev.map(msg => 
+          msg.id === assistantMsgId ? { ...msg, content: fullResponse } : msg
+        ));
+      });
     } catch (error) {
       console.error('Chat error:', error);
+      setChatHistory(prev => prev.map(msg => 
+        msg.id === assistantMsgId ? { ...msg, content: 'Sorry, I couldn\'t process that.' } : msg
+      ));
     } finally {
       setChatLoading(false);
     }
@@ -244,7 +269,9 @@ export default function PlantProfile() {
         name: editForm.name,
         species: editForm.species,
         location: editForm.location,
-        plantationDate: editForm.plantationDate
+        plantationDate: editForm.plantationDate,
+        latitude: editForm.latitude || null,
+        longitude: editForm.longitude || null
       });
 
       await addDoc(collection(db, `plants/${id}/timeline`), {
@@ -455,15 +482,16 @@ export default function PlantProfile() {
   const handleDelete = async () => {
     if (!id || !plant) return;
     
-    setLoading(true);
+    setIsDeleting(true);
     try {
       const plantRef = doc(db, 'plants', id);
       await deleteDoc(plantRef);
       navigate('/');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `plants/${id}`);
-      setLoading(false);
+      setIsDeleting(false);
       setShowDeleteConfirm(false);
+      console.error('Delete error:', error);
+      alert('Failed to delete plant. Please check permissions.');
     }
   };
 
@@ -654,9 +682,10 @@ export default function PlantProfile() {
                 </button>
                 <button 
                   onClick={handleDelete}
-                  className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100"
+                  disabled={isDeleting}
+                  className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-100 flex items-center justify-center gap-2"
                 >
-                  Delete
+                  {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete'}
                 </button>
               </div>
             </motion.div>
@@ -742,6 +771,12 @@ export default function PlantProfile() {
                     <p className="text-stone-900 font-bold">{plant.expectedLifespan || 'Unknown'}</p>
                   </div>
                   <div className="bg-stone-50 p-4 rounded-2xl">
+                    <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mb-1">Current Age</p>
+                    <p className="text-stone-900 font-bold">
+                      {getAccurateAge(plant.plantationDate) || 'N/A'}
+                    </p>
+                  </div>
+                  <div className="bg-stone-50 p-4 rounded-2xl">
                     <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mb-1">Planted On</p>
                     {isEditing ? (
                       <input
@@ -756,18 +791,179 @@ export default function PlantProfile() {
                       </p>
                     )}
                   </div>
-                  <div className="bg-stone-50 p-4 rounded-2xl">
-                    <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mb-1">Location</p>
+                  <div className={cn(
+                    "p-4 rounded-2xl relative group/loc transition-all",
+                    plant.latitude ? "bg-green-50/50 border border-green-100 ring-4 ring-green-500/5 shadow-sm" : "bg-stone-50 border border-transparent"
+                  )}>
+                    <p className="text-xs text-stone-400 font-bold uppercase tracking-wider mb-2 flex items-center justify-between">
+                      Location & GPS
+                      {!isEditing && plant.latitude && (
+                        <span className="text-[10px] text-green-600 font-bold flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3" />
+                          GPS ACTIVE
+                        </span>
+                      )}
+                    </p>
                     {isEditing ? (
-                      <input
-                        type="text"
-                        className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1 text-stone-900 font-bold outline-none focus:border-green-500 transition-all text-xs"
-                        value={editForm.location}
-                        onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
-                        placeholder="e.g. Balcony"
-                      />
+                      <div className="space-y-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-stone-400 uppercase ml-1">General Location Name</label>
+                          <input
+                            type="text"
+                            className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1.5 text-stone-900 font-bold outline-none focus:border-green-500 transition-all text-xs"
+                            value={editForm.location}
+                            onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                            placeholder="e.g. Balcony, Garden Bed A"
+                          />
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-stone-400 uppercase ml-1">Latitude</label>
+                            <input
+                              type="number"
+                              step="any"
+                              className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1.5 text-stone-900 font-bold outline-none focus:border-green-500 transition-all text-xs"
+                              value={editForm.latitude || ''}
+                              onChange={(e) => setEditForm({ ...editForm, latitude: e.target.value ? parseFloat(e.target.value) : undefined })}
+                              placeholder="0.0000"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-stone-400 uppercase ml-1">Longitude</label>
+                            <input
+                              type="number"
+                              step="any"
+                              className="w-full bg-white border border-stone-200 rounded-lg px-2 py-1.5 text-stone-900 font-bold outline-none focus:border-green-500 transition-all text-xs"
+                              value={editForm.longitude || ''}
+                              onChange={(e) => setEditForm({ ...editForm, longitude: e.target.value ? parseFloat(e.target.value) : undefined })}
+                              placeholder="0.0000"
+                            />
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (navigator.geolocation) {
+                              navigator.geolocation.getCurrentPosition(
+                                (pos) => {
+                                  const lat = pos.coords.latitude;
+                                  const lng = pos.coords.longitude;
+                                  setEditForm(prev => ({ 
+                                    ...prev, 
+                                    latitude: lat, 
+                                    longitude: lng,
+                                    // Update location text if it's generic or empty
+                                    location: prev.location && prev.location !== 'GPS Location' ? prev.location : `GPS Location (${lat.toFixed(2)}, ${lng.toFixed(2)})`
+                                  }));
+                                },
+                                (err) => {
+                                  console.error("Geolocation error:", err);
+                                  alert("Could not get location. Please ensure GPS is enabled and permissions are granted.");
+                                }
+                              );
+                            } else {
+                              alert("Geolocation is not supported by your browser.");
+                            }
+                          }}
+                          className="w-full py-2 text-[10px] font-bold text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors uppercase tracking-widest flex items-center justify-center gap-2"
+                        >
+                          <MapPin className="w-3 h-3" />
+                          {editForm.latitude ? 'Update GPS Data ✓' : 'Capture Current GPS'}
+                        </button>
+                      </div>
                     ) : (
-                      <p className="text-stone-900 font-bold">{plant.location}</p>
+                      <div className="space-y-1">
+                        <p className={cn(
+                          "font-bold",
+                          plant.location ? "text-stone-900" : "text-stone-300 italic"
+                        )}>
+                          {plant.location || 'Set general location...'}
+                        </p>
+                        {plant.latitude && plant.longitude ? (
+                          <div className="flex items-center gap-2 text-[10px] text-stone-400 font-mono">
+                            <span>Lat: {plant.latitude.toFixed(4)}</span>
+                            <span>Lng: {plant.longitude.toFixed(4)}</span>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-stone-300 italic">No precisely pinned location</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Google Maps Section */}
+                <div className="mt-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-green-600" />
+                      Precise Location
+                    </h3>
+                  </div>
+                  
+                  <div className="h-64 bg-stone-100 rounded-3xl overflow-hidden border border-stone-100 relative group">
+                    {import.meta.env.VITE_GOOGLE_MAPS_API_KEY ? (
+                      <APIProvider apiKey={import.meta.env.VITE_GOOGLE_MAPS_API_KEY}>
+                        <Map
+                          style={{width: '100%', height: '100%'}}
+                          defaultCenter={
+                            plant.latitude && plant.longitude 
+                              ? {lat: plant.latitude, lng: plant.longitude}
+                              : {lat: 20.5937, lng: 78.9629} // India center fallback
+                          }
+                          defaultZoom={plant.latitude ? 15 : 4}
+                          gestureHandling={'greedy'}
+                          disableDefaultUI={true}
+                          mapId="plant_location_map"
+                        >
+                          {plant.latitude && plant.longitude && (
+                            <AdvancedMarker position={{lat: plant.latitude, lng: plant.longitude}}>
+                              <Pin background={'#16a34a'} glyphColor={'#fff'} borderColor={'#166534'} />
+                            </AdvancedMarker>
+                          )}
+                        </Map>
+                      </APIProvider>
+                    ) : (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 bg-stone-50">
+                        <MapPin className="w-8 h-8 text-stone-300 mb-2" />
+                        <p className="text-sm font-bold text-stone-400">Map unavailable</p>
+                        <p className="text-[10px] text-stone-400 mt-1">Please configure VITE_GOOGLE_MAPS_API_KEY in settings</p>
+                      </div>
+                    )}
+                    
+                    {!plant.latitude && !isEditing && import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
+                      <div className="absolute inset-0 bg-stone-900/10 backdrop-blur-[2px] flex items-center justify-center p-6 text-center">
+                        <div className="bg-white p-6 rounded-3xl shadow-xl max-w-xs transition-transform hover:scale-105">
+                          <MapPin className="w-8 h-8 text-blue-500 mx-auto mb-3" />
+                          <p className="text-sm font-bold text-stone-900 mb-1">GPS Location Empty</p>
+                          <p className="text-[10px] text-stone-500 mb-4 leading-relaxed">Pinpoint your plant on the map to get hyper-local climate insights.</p>
+                          <button 
+                            onClick={async () => {
+                              if (navigator.geolocation) {
+                                navigator.geolocation.getCurrentPosition(async (pos) => {
+                                  try {
+                                    if (!id) return;
+                                    await updateDoc(doc(db, 'plants', id), {
+                                      latitude: pos.coords.latitude,
+                                      longitude: pos.coords.longitude
+                                    });
+                                  } catch (err) {
+                                    console.error("Error updating GPS:", err);
+                                  }
+                                }, (err) => {
+                                  alert("Please enable GPS/Location permissions to capture location.");
+                                });
+                              }
+                            }}
+                            className="w-full bg-blue-600 text-white py-2 rounded-xl text-xs font-bold hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                          >
+                            <Sparkles className="w-3 h-3" />
+                            Capture Current GPS
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1426,21 +1622,25 @@ export default function PlantProfile() {
                   </p>
                 </div>
               )}
-              {chatHistory.map((msg, idx) => (
-                <div key={idx} className={cn(
-                  "flex",
-                  msg.role === 'user' ? "justify-end" : "justify-start"
+              {chatHistory.map((msg) => (
+                <div key={msg.id} className={cn(
+                  "flex flex-col",
+                  msg.role === 'user' ? "items-end" : "items-start"
                 )}>
                   <div className={cn(
-                    "max-w-[80%] px-4 py-3 rounded-2xl text-sm leading-relaxed",
+                    "max-w-[85%] px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm",
                     msg.role === 'user' 
                       ? "bg-stone-900 text-white rounded-tr-none" 
-                      : "bg-stone-100 text-stone-800 rounded-tl-none"
+                      : "bg-stone-100 text-stone-800 rounded-tl-none border border-stone-200"
                   )}>
                     <ReactMarkdown>{msg.content}</ReactMarkdown>
                   </div>
+                  <span className="text-[10px] text-stone-400 mt-1 px-1 font-medium">
+                    {format(msg.timestamp, 'h:mm a')}
+                  </span>
                 </div>
               ))}
+              <div ref={chatEndRef} />
               {chatLoading && (
                 <div className="flex justify-start">
                   <div className="bg-stone-100 px-4 py-3 rounded-2xl rounded-tl-none flex items-center gap-2">
@@ -1453,16 +1653,16 @@ export default function PlantProfile() {
             </div>
 
             <form onSubmit={handleSendMessage} className="p-4 border-t border-stone-100 flex gap-2 items-center">
-              <VoiceInput 
-                onResult={(text) => setChatMessage(prev => prev + (prev ? ' ' : '') + text)}
-                placeholder="Speak your question..."
-              />
               <input 
                 type="text" 
                 placeholder="Type your question..."
                 className="flex-1 px-4 py-3 rounded-2xl bg-stone-50 border border-stone-200 focus:border-green-500 outline-none transition-all text-sm"
                 value={chatMessage}
                 onChange={(e) => setChatMessage(e.target.value)}
+              />
+              <VoiceInput 
+                onResult={(text) => setChatMessage(prev => prev + (prev ? ' ' : '') + text)}
+                placeholder="Speak your question..."
               />
               <button 
                 type="submit"

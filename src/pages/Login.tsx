@@ -196,151 +196,164 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-stone-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#f8f9f8] flex items-center justify-center p-4 selection:bg-green-100">
+      <div className="absolute inset-0 bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:32px_32px] opacity-40"></div>
+      
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="max-w-md w-full bg-white rounded-3xl shadow-xl shadow-stone-200/50 p-8 md:p-12 text-center"
+        className="max-w-[1000px] w-full bg-white rounded-[2.5rem] shadow-2xl shadow-stone-200/50 flex flex-col md:flex-row overflow-hidden relative z-10"
       >
-        <div className="inline-flex items-center justify-center w-20 h-20 bg-green-600 rounded-2xl mb-8 shadow-lg shadow-green-200">
-          <Leaf className="text-white w-10 h-10" />
+        {/* Left Side: Visual/Branding */}
+        <div className="hidden md:flex md:w-1/2 bg-[#f0f2f0] p-12 flex-col justify-between relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-green-100/50 rounded-full blur-3xl -mr-32 -mt-32"></div>
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-green-50 rounded-full blur-3xl -ml-32 -mb-32"></div>
+          
+          <div className="relative z-10">
+            <img src="/logo.png" alt="GrowMate Logo" className="w-20 h-20 mb-8 rounded-2xl shadow-lg shadow-green-900/10" />
+            <h2 className="text-4xl font-bold text-stone-900 tracking-tight leading-tight mb-4">
+              Nurture your plants with <span className="text-green-600">intelligence.</span>
+            </h2>
+            <p className="text-stone-500 text-lg leading-relaxed max-w-sm">
+              Your comprehensive AI-powered companion for smarter farming and garden management.
+            </p>
+          </div>
+
+          <div className="relative z-10">
+            <div className="flex -space-x-3 mb-4">
+              {[1, 2, 3, 4].map(i => (
+                <img 
+                  key={i}
+                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=user${i}`}
+                  alt=""
+                  className="w-10 h-10 rounded-full border-2 border-white shadow-sm"
+                />
+              ))}
+              <div className="w-10 h-10 rounded-full bg-green-600 border-2 border-white shadow-sm flex items-center justify-center text-[10px] text-white font-bold">
+                +2k
+              </div>
+            </div>
+            <p className="text-xs font-bold text-stone-400 uppercase tracking-widest">
+              Join 2,000+ farmers growing better
+            </p>
+          </div>
         </div>
-        
-        <h1 className="text-3xl font-bold text-stone-900 mb-2">GrowMate</h1>
-        <p className="text-stone-500 mb-10 leading-relaxed">
-          Your personal AI-powered plant care assistant. Manage, track, and grow your plants with ease.
-        </p>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-2xl text-sm font-medium flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            <p className="text-left">{error}</p>
-          </div>
-        )}
-
-        <div className="space-y-4">
-          <button
-            onClick={handleGoogleLogin}
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-3 bg-white text-stone-900 border border-stone-200 py-4 rounded-2xl font-semibold hover:bg-stone-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
-          >
-            <LogIn className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            Continue with Google
-          </button>
-
-          <div className="relative my-8">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-stone-100"></div>
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-4 text-stone-400 font-bold tracking-widest">Or Phone Number</span>
-            </div>
+        {/* Right Side: Login Form */}
+        <div className="flex-1 p-8 md:p-16 flex flex-col justify-center bg-white">
+          <div className="md:hidden flex flex-col items-center mb-8">
+            <img src="/logo.png" alt="GrowMate Logo" className="w-16 h-16 mb-4 rounded-xl shadow-lg shadow-green-900/5" />
+            <h1 className="text-2xl font-bold text-stone-900">GrowMate</h1>
           </div>
 
-          {step === 'phone' ? (
-            <form onSubmit={handlePhoneSignIn} className="space-y-4">
-              <div className="space-y-1.5 text-left">
+          <div className="mb-10">
+            <h3 className="text-2xl font-bold text-stone-900 mb-2">Welcome Back</h3>
+            <p className="text-stone-500 font-medium">Log in to manage your green space</p>
+          </div>
+
+          {error && (
+            <div className="mb-8 p-4 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-sm font-medium flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <p className="text-left">{error}</p>
+            </div>
+          )}
+
+          <div className="space-y-6">
+            <button
+              onClick={handleGoogleLogin}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-4 bg-white text-stone-900 border border-stone-100 py-4 rounded-2xl font-bold hover:bg-stone-50 hover:shadow-lg hover:shadow-stone-200/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed group shadow-sm text-sm"
+            >
+              <img src="https://www.google.com/favicon.ico" className="w-5 h-5" alt="" />
+              Sign in with Google
+            </button>
+
+            <div className="relative flex items-center py-2">
+              <div className="flex-grow border-t border-stone-100"></div>
+              <span className="flex-shrink mx-4 text-xs font-bold text-stone-300 uppercase tracking-[0.2em]">or</span>
+              <div className="flex-grow border-t border-stone-100"></div>
+            </div>
+
+            {step === 'phone' ? (
+              <form onSubmit={handlePhoneSignIn} className="space-y-4">
                 <div className="flex gap-2">
-                   <select 
-                    className="w-24 px-3 py-4 rounded-2xl border border-stone-200 focus:border-green-500 outline-none bg-stone-50 text-stone-600 font-bold text-sm"
+                  <select 
+                    className="w-24 px-3 py-4 rounded-2xl border border-stone-100 focus:border-green-500 outline-none bg-stone-50 text-stone-600 font-bold text-sm transition-all"
                     value={countryCode}
                     onChange={(e) => setCountryCode(e.target.value)}
                   >
-                    <option value="+91">+91 (IN)</option>
-                    <option value="+1">+1 (US)</option>
-                    <option value="+44">+44 (UK)</option>
-                    <option value="+61">+61 (AU)</option>
-                    <option value="+971">+971 (AE)</option>
-                    <option value="+65">+65 (SG)</option>
-                    <option value="+49">+49 (DE)</option>
-                    <option value="+33">+33 (FR)</option>
-                    <option value="+81">+81 (JP)</option>
-                    <option value="+86">+86 (CN)</option>
-                    <option value="+7">+7 (RU)</option>
-                    <option value="+55">+55 (BR)</option>
+                    <option value="+91">+91</option>
+                    <option value="+1">+1</option>
+                    <option value="+44">+44</option>
                   </select>
                   <input
                     type="tel"
-                    placeholder="Mobile Number"
-                    className="flex-1 px-5 py-4 rounded-2xl border border-stone-200 focus:border-green-500 focus:ring-4 focus:ring-green-500/10 outline-none transition-all text-stone-900 font-medium"
+                    placeholder="Enter Phone Number"
+                    className="flex-1 px-5 py-4 rounded-2xl border border-stone-100 focus:border-green-500 focus:ring-4 focus:ring-green-500/5 outline-none transition-all text-stone-900 font-bold bg-stone-50"
                     value={phoneNumber}
                     onChange={(e) => setPhoneNumber(e.target.value)}
                     required
                   />
                 </div>
-                <p className="text-[10px] text-stone-400 font-medium ml-2">
-                  Enter number without country code. <span className="text-green-600 font-bold">Note:</span> Test numbers won't receive a real SMS.
-                </p>
-              </div>
-              <button
-                type="submit"
-                disabled={loading || !phoneNumber}
-                className="w-full bg-stone-900 text-white py-4 rounded-2xl font-semibold hover:bg-stone-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Send OTP'}
-              </button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <div className="text-left ml-1">
-                <p className="text-xs font-bold text-stone-400 uppercase tracking-widest mb-2">Verification Code</p>
-                <p className="text-sm text-stone-600 mb-2">Sent to {phoneNumber}</p>
-                <p className="text-[10px] text-green-600 font-bold mb-4">
-                  For test numbers, enter the verification code you set in the Firebase Console.
-                </p>
-              </div>
-              <input
-                type="text"
-                placeholder="Enter 6-digit code"
-                maxLength={6}
-                className="w-full px-5 py-4 rounded-2xl border border-stone-200 focus:border-green-500 focus:ring-4 focus:ring-green-500/10 outline-none transition-all text-stone-900 font-medium text-center tracking-[0.5em] text-xl"
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                required
-              />
-              <button
-                type="submit"
-                disabled={loading || otp.length < 6}
-                className="w-full bg-green-600 text-white py-4 rounded-2xl font-semibold hover:bg-green-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-green-200"
-              >
-                {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Verify & Continue'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setStep('phone')}
-                className="text-sm font-bold text-stone-400 hover:text-stone-600 transition-colors"
-              >
-                Change Phone Number
-              </button>
-            </form>
-          )}
+                <button
+                  type="submit"
+                  disabled={loading || !phoneNumber}
+                  className="w-full bg-stone-900 text-white py-4 rounded-2xl font-bold hover:bg-stone-800 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-stone-900/10"
+                >
+                  {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Get OTP Code'}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <div className="text-center mb-6">
+                  <p className="text-sm font-bold text-stone-400 mb-1">ENTER VERIFICATION CODE</p>
+                  <p className="text-xs text-stone-500">Sent to {countryCode} {phoneNumber}</p>
+                </div>
+                <input
+                  type="text"
+                  placeholder="000 000"
+                  maxLength={6}
+                  className="w-full px-5 py-4 rounded-2xl border border-stone-100 focus:border-green-500 focus:ring-4 focus:ring-green-500/5 outline-none transition-all text-stone-900 font-black text-center tracking-[0.5em] text-2xl bg-stone-50"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  required
+                />
+                <button
+                  type="submit"
+                  disabled={loading || otp.length < 6}
+                  className="w-full bg-green-600 text-white py-4 rounded-2xl font-bold hover:bg-green-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-green-600/20"
+                >
+                  {loading ? <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : 'Verify Code'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStep('phone')}
+                  className="w-full text-sm font-bold text-stone-400 hover:text-stone-600 transition-colors"
+                >
+                  Back to Phone Login
+                </button>
+              </form>
+            )}
 
-          <div id="recaptcha-container"></div>
-        </div>
+            <div id="recaptcha-container"></div>
 
-        <div className="relative my-8">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-stone-200"></div>
+            <button
+              onClick={handleGuestLogin}
+              className="w-full py-4 rounded-2xl font-bold text-green-700 bg-green-50 hover:bg-green-100/80 transition-all border border-green-100 mt-4 flex items-center justify-center gap-2"
+            >
+              Explore as Guest
+            </button>
           </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-white px-4 text-stone-400 font-bold tracking-widest">Or try this</span>
+
+          <div className="mt-12 pt-8 border-t border-stone-50 text-center">
+            <p className="text-[10px] font-bold text-stone-300 uppercase tracking-[0.4em] mb-2">
+              AN ASHVETH CREATION
+            </p>
+            <p className="text-[10px] text-stone-400">
+              GrowMate &copy; 2024. All rights reserved.
+            </p>
           </div>
         </div>
-
-        <button
-          onClick={handleGuestLogin}
-          className="w-full py-4 rounded-2xl font-semibold text-green-600 bg-green-50 hover:bg-green-100 transition-all border border-green-100 mb-8 flex items-center justify-center gap-2"
-        >
-          <Leaf className="w-5 h-5" />
-          Continue as Guest (No Login Required)
-        </button>
-
-        <p className="mt-8 text-xs text-stone-400">
-          By continuing, you agree to our Terms of Service and Privacy Policy.
-        </p>
-        <p className="mt-6 text-[10px] font-bold text-stone-300 uppercase tracking-[0.3em]">
-          an ashveth creation
-        </p>
       </motion.div>
     </div>
   );

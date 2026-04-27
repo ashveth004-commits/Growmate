@@ -35,10 +35,15 @@ export default function AddPlant() {
     repotting: ''
   });
   const [generatingAI, setGeneratingAI] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleGenerateAI = async () => {
-    if (!formData.species) return;
+    if (!formData.species) {
+      setError("Please enter a species name first.");
+      return;
+    }
     setGeneratingAI(true);
+    setError(null);
     try {
       const aiProfile = await generatePlantProfile(formData.species, formData.plantationDate);
       if (aiProfile.careGuide) {
@@ -50,8 +55,9 @@ export default function AddPlant() {
         expectedLifespan: aiProfile.expectedLifespan || '',
         ...aiProfile 
       }));
-    } catch (error) {
-      console.error('Error generating AI profile:', error);
+    } catch (err: any) {
+      console.error('Error generating AI profile:', err);
+      setError("AI was unable to generate a profile right now. You can still enter details manually.");
     } finally {
       setGeneratingAI(false);
     }
@@ -77,6 +83,7 @@ export default function AddPlant() {
     if (!userId) return;
 
     setLoading(true);
+    setError(null);
     try {
       // 1. Upload Image if exists
       let photoUrl = '';
@@ -102,17 +109,24 @@ export default function AddPlant() {
       }
 
       // 3. Merge values correctly
+      // Ensure careGuide items are strings before trimming
       const finalCareGuide = { 
         ...(aiProfile?.careGuide || {}),
         ...Object.fromEntries(
-          Object.entries(careGuide).filter(([_, v]) => v.trim() !== '')
+          Object.entries(careGuide).filter(([_, v]) => typeof v === 'string' && v.trim() !== '')
         )
       };
 
       // 4. Save to Firestore
       const plantData = {
-        ...formData,
-        ...aiProfile,
+        name: formData.name,
+        species: formData.species,
+        isIndoor: formData.isIndoor,
+        plantationDate: formData.plantationDate,
+        location: formData.location,
+        potSize: formData.potSize,
+        description: formData.description || aiProfile?.description || '',
+        expectedLifespan: formData.expectedLifespan || aiProfile?.expectedLifespan || '',
         latitude: formData.latitude || null,
         longitude: formData.longitude || null,
         ownerId: userId,
@@ -120,7 +134,8 @@ export default function AddPlant() {
         careGuide: finalCareGuide,
         photoUrl,
         healthStatus: 'Healthy',
-        age: 'Just started'
+        age: 'Just started',
+        fertilizerTimeline: aiProfile?.fertilizerTimeline || []
       };
 
       const docRef = await addDoc(collection(db, 'plants'), plantData);
@@ -133,8 +148,18 @@ export default function AddPlant() {
       });
 
       navigate(`/plant/${docRef.id}`);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'plants');
+    } catch (err: any) {
+      console.error('Error adding plant:', err);
+      let errorMessage = 'Failed to add plant. ';
+      
+      try {
+        const parsedError = JSON.parse(err.message);
+        errorMessage += parsedError.error || 'Please check your connection and try again.';
+      } catch (e) {
+        errorMessage += err.message || 'Please check your connection and try again.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -146,6 +171,25 @@ export default function AddPlant() {
         <h1 className="text-3xl font-bold text-stone-900 tracking-tight">Add New Plant</h1>
         <p className="text-stone-500 mt-1">Tell us about your new green friend and our AI will generate a custom care profile.</p>
       </header>
+
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-6"
+          >
+            <div className="bg-red-50 border border-red-100 text-red-600 px-6 py-4 rounded-2xl flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 shrink-0" />
+              <p className="text-sm font-medium">{error}</p>
+              <button onClick={() => setError(null)} className="ml-auto p-1 hover:bg-red-100 rounded-full">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <motion.div 
         initial={{ opacity: 0, y: 20 }}

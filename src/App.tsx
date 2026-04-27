@@ -8,6 +8,7 @@ import { Leaf, LayoutDashboard, Calendar as CalendarIcon, User as UserIcon, Plus
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 import { LanguageProvider, useTranslation } from './context/LanguageContext';
+import logo from './assets/logo.png';
 
 // Pages (to be created)
 import Dashboard from './pages/Dashboard';
@@ -41,7 +42,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }, []);
 
   const isGuest = localStorage.getItem('isGuest') === 'true';
-  if (loading) return <div className="flex items-center justify-center h-screen"><img src="/logo.png" alt="Loading..." className="animate-bounce w-16 h-16 object-contain" /></div>;
+  if (loading) return <div className="flex items-center justify-center h-screen"><img src={logo} alt="Loading..." className="animate-bounce w-16 h-16 object-contain" /></div>;
   if (!user && !isGuest) return <Navigate to="/login" />;
 
   return <>{children}</>;
@@ -132,7 +133,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className="w-full md:w-64 bg-white border-b md:border-r border-stone-200 flex flex-col sticky top-0 z-50 md:h-screen">
         <div className="p-6 flex items-center gap-3">
-          <img src="/logo.png" alt="GrowMate Logo" className="w-10 h-10 object-contain rounded-xl" />
+          <img src={logo} alt="GrowMate Logo" className="w-10 h-10 object-contain rounded-xl" />
           <h1 className="text-xl font-bold text-stone-900 tracking-tight">GrowMate</h1>
         </div>
 

@@ -12,6 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { Leaf, LogIn, AlertCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
+import logo from '../assets/logo.png';
 
 export default function Login() {
   const [loading, setLoading] = useState(false);
@@ -210,7 +211,7 @@ export default function Login() {
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-green-50 rounded-full blur-3xl -ml-32 -mb-32"></div>
           
           <div className="relative z-10">
-            <img src="/logo.png" alt="GrowMate Logo" className="w-20 h-20 mb-8 rounded-2xl shadow-lg shadow-green-900/10" />
+            <img src={logo} alt="GrowMate Logo" className="w-20 h-20 mb-8 rounded-2xl shadow-lg shadow-green-900/10" />
             <h2 className="text-4xl font-bold text-stone-900 tracking-tight leading-tight mb-4">
               Nurture your plants with <span className="text-green-600">intelligence.</span>
             </h2>
@@ -242,7 +243,7 @@ export default function Login() {
         {/* Right Side: Login Form */}
         <div className="flex-1 p-8 md:p-16 flex flex-col justify-center bg-white">
           <div className="md:hidden flex flex-col items-center mb-8">
-            <img src="/logo.png" alt="GrowMate Logo" className="w-16 h-16 mb-4 rounded-xl shadow-lg shadow-green-900/5" />
+            <img src={logo} alt="GrowMate Logo" className="w-16 h-16 mb-4 rounded-xl shadow-lg shadow-green-900/5" />
             <h1 className="text-2xl font-bold text-stone-900">GrowMate</h1>
           </div>
 

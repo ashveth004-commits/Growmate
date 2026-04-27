@@ -3,88 +3,189 @@ import { Plant, CareGuide, FertilizerEvent } from "../types";
 
 // Always initialize with the key from process.env.GEMINI_API_KEY
 // In AI Studio Build, this is automatically provided via define in vite.config.ts
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const getApiKey = () => {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key || key === "") {
+    // We don't throw here to avoid crashing at module load, but we should handle it in calls
+    return "";
+  }
+  return key;
+};
 
-export async function generatePlantProfile(species: string, plantationDate: string) {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Generate a detailed plant care profile for the species: ${species}. The plant was planted on ${plantationDate}.
-    Provide the following in JSON format:
-    - expectedLifespan: string (e.g., "10-15 years")
-    - description: string (short AI description)
-    - careGuide: { watering: string, sunlight: string, temperature: string, humidity: string, soil: string, repotting: string }
-    - fertilizerTimeline: Array<{ name: string, quantity: string, schedule: string, nextDate: string }>
-    - growthExpectations: string
-    - seasonalCareTips: string`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          expectedLifespan: { type: Type.STRING },
-          description: { type: Type.STRING },
-          careGuide: {
-            type: Type.OBJECT,
-            properties: {
-              watering: { type: Type.STRING },
-              sunlight: { type: Type.STRING },
-              temperature: { type: Type.STRING },
-              humidity: { type: Type.STRING },
-              soil: { type: Type.STRING },
-              repotting: { type: Type.STRING }
-            },
-            required: ["watering", "sunlight", "temperature", "humidity", "soil", "repotting"]
-          },
-          fertilizerTimeline: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                name: { type: Type.STRING },
-                quantity: { type: Type.STRING },
-                schedule: { type: Type.STRING },
-                nextDate: { type: Type.STRING }
-              },
-              required: ["name", "quantity", "schedule", "nextDate"]
-            }
-          },
-          growthExpectations: { type: Type.STRING },
-          seasonalCareTips: { type: Type.STRING }
-        },
-        required: ["expectedLifespan", "description", "careGuide", "fertilizerTimeline", "growthExpectations", "seasonalCareTips"]
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
+
+function ensureApiKey() {
+  const key = getApiKey();
+  if (!key) {
+    throw new Error("GEMINI_API_KEY is missing. If you are on Vercel, please add it to your Environment Variables.");
+  }
+}
+
+/**
+ * Simple caching logic using sessionStorage
+ * This helps avoid repeated AI calls for the same data within the same session.
+ */
+function getCachedData(key: string) {
+  try {
+    const cached = sessionStorage.getItem(`gm_cache_${key}`);
+    if (cached) {
+      const { data, timestamp } = JSON.parse(cached);
+      // Cache valid for 30 minutes
+      if (Date.now() - timestamp < 30 * 60 * 1000) {
+        return data;
       }
     }
-  });
+  } catch (e) {
+    console.warn("Cache read error:", e);
+  }
+  return null;
+}
 
-  return JSON.parse(response.text || "{}");
+function setCachedData(key: string, data: any) {
+  try {
+    sessionStorage.setItem(`gm_cache_${key}`, JSON.stringify({
+      data,
+      timestamp: Date.now()
+    }));
+  } catch (e) {
+    console.warn("Cache write error:", e);
+  }
+}
+
+function isQuotaError(err: any): boolean {
+  const msg = err.message || "";
+  const status = err.status || "";
+  const code = err.code || "";
+  
+  const errString = typeof err === 'string' ? err : JSON.stringify(err);
+  
+  return (
+    msg.includes("RESOURCE_EXHAUSTED") || 
+    msg.includes("429") || 
+    msg.includes("quota") ||
+    status === "RESOURCE_EXHAUSTED" ||
+    code === 429 ||
+    errString.includes("RESOURCE_EXHAUSTED") ||
+    errString.includes("429")
+  );
+}
+
+export async function generatePlantProfile(species: string, plantationDate: string) {
+  ensureApiKey();
+  const cacheKey = `plant_profile_${species}_${plantationDate}`;
+  const cached = getCachedData(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Generate a detailed plant care profile for the species: ${species}. The plant was planted on ${plantationDate}.
+      Provide the following in JSON format:
+      - expectedLifespan: string (e.g., "10-15 years")
+      - description: string (short AI description)
+      - careGuide: { watering: string, sunlight: string, temperature: string, humidity: string, soil: string, repotting: string }
+      - fertilizerTimeline: Array<{ name: string, quantity: string, schedule: string, nextDate: string }>
+      - growthExpectations: string
+      - seasonalCareTips: string`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            expectedLifespan: { type: Type.STRING },
+            description: { type: Type.STRING },
+            careGuide: {
+              type: Type.OBJECT,
+              properties: {
+                watering: { type: Type.STRING },
+                sunlight: { type: Type.STRING },
+                temperature: { type: Type.STRING },
+                humidity: { type: Type.STRING },
+                soil: { type: Type.STRING },
+                repotting: { type: Type.STRING }
+              },
+              required: ["watering", "sunlight", "temperature", "humidity", "soil", "repotting"]
+            },
+            fertilizerTimeline: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  quantity: { type: Type.STRING },
+                  schedule: { type: Type.STRING },
+                  nextDate: { type: Type.STRING }
+                },
+                required: ["name", "quantity", "schedule", "nextDate"]
+              }
+            },
+            growthExpectations: { type: Type.STRING },
+            seasonalCareTips: { type: Type.STRING }
+          },
+          required: ["expectedLifespan", "description", "careGuide", "fertilizerTimeline", "growthExpectations", "seasonalCareTips"]
+        }
+      }
+    });
+
+    const data = JSON.parse(response.text || "{}");
+    setCachedData(cacheKey, data);
+    return data;
+  } catch (err: any) {
+    console.error("Plant profile generation error:", err);
+    if (isQuotaError(err)) {
+      return {
+        expectedLifespan: "Unknown",
+        description: "Plant profile is temporarily unavailable due to high demand. Please try again in a few minutes.",
+        careGuide: { watering: "N/A", sunlight: "N/A", temperature: "N/A", humidity: "N/A", soil: "N/A", repotting: "N/A" },
+        fertilizerTimeline: [],
+        growthExpectations: "Information currently unavailable.",
+        seasonalCareTips: "Information currently unavailable."
+      };
+    }
+    throw err;
+  }
 }
 
 export async function diagnosePlantProblem(species: string, issueDescription: string) {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Diagnose a plant problem for a ${species}. User description: "${issueDescription}".
-    Provide the following in JSON format:
-    - possibleCause: string
-    - suggestedSolution: string
-    - riskLevel: string (low, medium, high)`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          possibleCause: { type: Type.STRING },
-          suggestedSolution: { type: Type.STRING },
-          riskLevel: { type: Type.STRING }
-        },
-        required: ["possibleCause", "suggestedSolution", "riskLevel"]
+  ensureApiKey();
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Diagnose a plant problem for a ${species}. User description: "${issueDescription}".
+      Provide the following in JSON format:
+      - possibleCause: string
+      - suggestedSolution: string
+      - riskLevel: string (low, medium, high)`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            possibleCause: { type: Type.STRING },
+            suggestedSolution: { type: Type.STRING },
+            riskLevel: { type: Type.STRING }
+          },
+          required: ["possibleCause", "suggestedSolution", "riskLevel"]
+        }
       }
-    }
-  });
+    });
 
-  return JSON.parse(response.text || "{}");
+    return JSON.parse(response.text || "{}");
+  } catch (err: any) {
+    console.error("Diagnosis error:", err);
+    if (isQuotaError(err)) {
+      return {
+        possibleCause: "AI Diagnostics Limit Reached",
+        suggestedSolution: "We've hit our analysis limit momentarily. Please try again shortly or check basic care guides for common issues.",
+        riskLevel: "medium"
+      };
+    }
+    throw err;
+  }
 }
 
 export async function getPlantChatResponse(plant: Plant, message: string, history: { role: string, parts: { text: string }[] }[]) {
+  ensureApiKey();
   const systemInstruction = `You are a professional plant care assistant for a specific plant: ${plant.name} (${plant.species}).
   Plant Context:
   - Location: ${plant.location} (${plant.isIndoor ? 'Indoor' : 'Outdoor'})
@@ -95,18 +196,27 @@ export async function getPlantChatResponse(plant: Plant, message: string, histor
   
   Answer the user's questions about this specific plant using the provided context. Be helpful, encouraging, and accurate.`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: message,
-    config: {
-      systemInstruction,
-    }
-  });
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: message,
+      config: {
+        systemInstruction,
+      }
+    });
 
-  return response.text;
+    return response.text;
+  } catch (err: any) {
+    console.error("Chat response error:", err);
+    if (isQuotaError(err)) {
+      return "I'm currently taking a short break due to high traffic! Please ask me again in a minute or two.";
+    }
+    throw err;
+  }
 }
 
 export async function getPlantChatResponseStream(plant: Plant, message: string, onChunk: (text: string) => void) {
+  ensureApiKey();
   const systemInstruction = `You are a professional plant care assistant for a specific plant: ${plant.name} (${plant.species}).
   Plant Context:
   - Location: ${plant.location} (${plant.isIndoor ? 'Indoor' : 'Outdoor'})
@@ -117,56 +227,94 @@ export async function getPlantChatResponseStream(plant: Plant, message: string, 
   
   Answer the user's questions about this specific plant using the provided context. Be helpful, encouraging, and accurate.`;
 
-  const result = await ai.models.generateContentStream({
-    model: "gemini-3-flash-preview",
-    contents: message,
-    config: {
-      systemInstruction,
-    }
-  });
+  try {
+    const result = await ai.models.generateContentStream({
+      model: "gemini-3-flash-preview",
+      contents: message,
+      config: {
+        systemInstruction,
+      }
+    });
 
-  for await (const chunk of result) {
-    onChunk(chunk.text || "");
+    for await (const chunk of result) {
+      onChunk(chunk.text || "");
+    }
+  } catch (err: any) {
+    console.error("Chat Stream error:", err);
+    if (isQuotaError(err)) {
+      onChunk("I'm currently overwhelmed with requests. Please try again in 60 seconds.");
+      return;
+    }
+    throw err;
   }
 }
 
 export async function generateWeatherSuggestions(weather: any, plants: Plant[]) {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Given the current weather data: ${JSON.stringify(weather)} 
-    and the user's plant collection: ${JSON.stringify(plants.map(p => ({ name: p.name, species: p.species, isIndoor: p.isIndoor, location: p.location })))}
-    
-    Generate specific care suggestions in JSON format:
-    - watering: string (how to adjust watering for these plants based on humidity/rain/temp)
-    - fertilizing: string (is it a good time to fertilize? consider temp and season)
-    - diseaseRisk: { level: string, description: string } (risk of pests or fungus based on humidity/temp)
-    - generalTip: string (one actionable tip for today)`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          watering: { type: Type.STRING },
-          fertilizing: { type: Type.STRING },
-          diseaseRisk: {
-            type: Type.OBJECT,
-            properties: {
-              level: { type: Type.STRING },
-              description: { type: Type.STRING }
-            },
-            required: ["level", "description"]
-          },
-          generalTip: { type: Type.STRING }
-        },
-        required: ["watering", "fertilizing", "diseaseRisk", "generalTip"]
-      }
-    }
-  });
+  ensureApiKey();
+  // Generate a cache key based on basic weather and plant collection
+  const plantFingerprint = plants.map(p => p.species).sort().join(",");
+  const weatherFingerprint = `${weather.temperature}_${weather.humidity}_${weather.conditionCode}`;
+  const cacheKey = `weather_suggestions_${weatherFingerprint}_${plantFingerprint}`;
+  
+  const cached = getCachedData(cacheKey);
+  if (cached) return cached;
 
-  return JSON.parse(response.text || "{}");
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Given the current weather data: ${JSON.stringify(weather)} 
+      and the user's plant collection: ${JSON.stringify(plants.map(p => ({ name: p.name, species: p.species, isIndoor: p.isIndoor, location: p.location })))}
+      
+      Generate specific care suggestions in JSON format:
+      - watering: string (how to adjust watering for these plants based on humidity/rain/temp)
+      - fertilizing: string (is it a good time to fertilize? consider temp and season)
+      - diseaseRisk: { level: string, description: string } (risk of pests or fungus based on humidity/temp)
+      - generalTip: string (one actionable tip for today)`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            watering: { type: Type.STRING },
+            fertilizing: { type: Type.STRING },
+            diseaseRisk: {
+              type: Type.OBJECT,
+              properties: {
+                level: { type: Type.STRING },
+                description: { type: Type.STRING }
+              },
+              required: ["level", "description"]
+            },
+            generalTip: { type: Type.STRING }
+          },
+          required: ["watering", "fertilizing", "diseaseRisk", "generalTip"]
+        }
+      }
+    });
+
+    const data = JSON.parse(response.text || "{}");
+    setCachedData(cacheKey, data);
+    return data;
+  } catch (err: any) {
+    console.error("Weather Suggestion error:", err);
+    if (isQuotaError(err)) {
+      return {
+        watering: "Adjust watering based on observed soil moisture.",
+        fertilizing: "Fertilize if current conditions are mild.",
+        diseaseRisk: { level: "Unknown", description: "AI analysis limit reached. Observe leaves for spots or pests manually." },
+        generalTip: "Keep an eye on the local weather forecast and adjust care as needed."
+      };
+    }
+    throw err;
+  }
 }
 
 export async function predictCropYield(input: any, weather: any, location: { lat: number, lng: number } | null) {
+  ensureApiKey();
+  const cacheKey = `crop_yield_${input.cropType}_${input.landSize}_${input.landUnit}_${weather?.temperature_2m || 'noweather'}`;
+  const cached = getCachedData(cacheKey);
+  if (cached) return cached;
+
   const prompt = `Predict the crop yield and profit potential for the following parameters:
     - Land Size: ${input.landSize} ${input.landUnit}
     - Crop Type: ${input.cropType}
@@ -189,85 +337,100 @@ export async function predictCropYield(input: any, weather: any, location: { lat
     - factors: string[] (list 4-5 key factors affecting this prediction)
     - recommendations: string[] (list 4-5 actionable steps the farmer should take)`;
 
-  const result = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: prompt,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          expectedYield: { type: Type.STRING },
-          expectedYieldValue: { type: Type.NUMBER },
-          yieldUnit: { type: Type.STRING },
-          profitEstimation: { type: Type.STRING },
-          currencySymbol: { type: Type.STRING },
-          estimatedRevenue: { type: Type.NUMBER },
-          estimatedCosts: { type: Type.NUMBER },
-          factors: { 
-            type: Type.ARRAY, 
-            items: { type: Type.STRING } 
-          },
-          recommendations: { 
-            type: Type.ARRAY, 
-            items: { type: Type.STRING } 
-          }
-        },
-        required: [
-          "expectedYield", 
-          "expectedYieldValue", 
-          "yieldUnit", 
-          "profitEstimation", 
-          "currencySymbol", 
-          "estimatedRevenue", 
-          "estimatedCosts", 
-          "factors", 
-          "recommendations"
-        ]
-      }
-    }
-  });
-
   try {
+    const result = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            expectedYield: { type: Type.STRING },
+            expectedYieldValue: { type: Type.NUMBER },
+            yieldUnit: { type: Type.STRING },
+            profitEstimation: { type: Type.STRING },
+            currencySymbol: { type: Type.STRING },
+            estimatedRevenue: { type: Type.NUMBER },
+            estimatedCosts: { type: Type.NUMBER },
+            factors: { 
+              type: Type.ARRAY, 
+              items: { type: Type.STRING } 
+            },
+            recommendations: { 
+              type: Type.ARRAY, 
+              items: { type: Type.STRING } 
+            }
+          },
+          required: [
+            "expectedYield", 
+            "expectedYieldValue", 
+            "yieldUnit", 
+            "profitEstimation", 
+            "currencySymbol", 
+            "estimatedRevenue", 
+            "estimatedCosts", 
+            "factors", 
+            "recommendations"
+          ]
+        }
+      }
+    });
+
     const text = result.text;
     if (!text) throw new Error("AI returned empty response");
-    return JSON.parse(text);
-  } catch (err) {
-    console.error("Failed to parse AI response:", result.text);
-    throw new Error("Invalid response from AI");
+    const data = JSON.parse(text);
+    setCachedData(cacheKey, data);
+    return data;
+  } catch (err: any) {
+    console.error("Failed to predict crop yield:", err);
+    if (isQuotaError(err)) {
+      throw new Error("We've hit our AI processing limit for today. Please try again tomorrow or later tonight.");
+    }
+    throw new Error("Invalid response from AI or network error.");
   }
 }
 
 export async function refineFarmerVoiceInput(rawTranscript: string) {
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `You are an expert agricultural assistant. Your task is to process a farmer's voice-to-text transcript.
-    - Fix all spelling and grammatical errors.
-    - Interpret rural, informal, or regional agricultural terminology correctly (e.g., specific pesticide names, local units, or dialect-specific names for plant diseases).
-    - Convert it into clear, professional, yet simple text.
-    - CRITICAL: Do NOT change the original meaning or intent of the farmer.
-    
-    Raw transcript: "${rawTranscript}"
-    
-    Provide the refined text in JSON format:
-    - refinedText: string`,
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          refinedText: { type: Type.STRING }
-        },
-        required: ["refinedText"]
+  ensureApiKey();
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `You are an expert agricultural assistant. Your task is to process a farmer's voice-to-text transcript.
+      - Fix all spelling and grammatical errors.
+      - Interpret rural, informal, or regional agricultural terminology correctly (e.g., specific pesticide names, local units, or dialect-specific names for plant diseases).
+      - Convert it into clear, professional, yet simple text.
+      - CRITICAL: Do NOT change the original meaning or intent of the farmer.
+      
+      Raw transcript: "${rawTranscript}"
+      
+      Provide the refined text in JSON format:
+      - refinedText: string`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            refinedText: { type: Type.STRING }
+          },
+          required: ["refinedText"]
+        }
       }
-    }
-  });
+    });
 
-  const data = JSON.parse(response.text || "{}");
-  return data.refinedText || rawTranscript;
+    const data = JSON.parse(response.text || "{}");
+    return data.refinedText || rawTranscript;
+  } catch (err: any) {
+    console.error("Voice refinement error:", err);
+    if (isQuotaError(err)) {
+      return rawTranscript; // Just return unrefined text as fallback
+    }
+    throw err;
+  }
 }
 
 export async function getFarmerGPTResponse(message: string) {
+  ensureApiKey();
   const systemInstruction = `You are Farmer GPT, an expert agricultural consultant with decades of experience in farming, horticulture, and plant science. 
   Your goal is to help farmers and gardeners with:
   1. Crop selection based on season and region.
@@ -280,18 +443,27 @@ export async function getFarmerGPTResponse(message: string) {
   Keep your tone professional, advisory, and respectful of local farming traditions while providing modern scientific insights. 
   If a question is not about agriculture, gardening, or plants, politely redirect the user back to farming topics.`;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: message,
-    config: {
-      systemInstruction,
-    }
-  });
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: message,
+      config: {
+        systemInstruction,
+      }
+    });
 
-  return response.text;
+    return response.text;
+  } catch (err: any) {
+    console.error("FarmerGPT response error:", err);
+    if (isQuotaError(err)) {
+      return "I'm currently at full capacity helping other farmers. Please try again in a few minutes!";
+    }
+    throw err;
+  }
 }
 
 export async function getFarmerGPTResponseStream(message: string, onChunk: (text: string) => void) {
+  ensureApiKey();
   const systemInstruction = `You are Farmer GPT, an expert agricultural consultant with decades of experience in farming, horticulture, and plant science. 
   Your goal is to help farmers and gardeners with:
   1. Crop selection based on season and region.
@@ -304,20 +476,30 @@ export async function getFarmerGPTResponseStream(message: string, onChunk: (text
   Keep your tone professional, advisory, and respectful of local farming traditions while providing modern scientific insights. 
   If a question is not about agriculture, gardening, or plants, politely redirect the user back to farming topics.`;
 
-  const result = await ai.models.generateContentStream({
-    model: "gemini-3-flash-preview",
-    contents: message,
-    config: {
-      systemInstruction,
-    }
-  });
+  try {
+    const result = await ai.models.generateContentStream({
+      model: "gemini-3-flash-preview",
+      contents: message,
+      config: {
+        systemInstruction,
+      }
+    });
 
-  for await (const chunk of result) {
-    onChunk(chunk.text || "");
+    for await (const chunk of result) {
+      onChunk(chunk.text || "");
+    }
+  } catch (err: any) {
+    console.error("FarmerGPT Stream error:", err);
+    if (isQuotaError(err)) {
+      onChunk("My agricultural databases are currently busy. Please try again soon.");
+      return;
+    }
+    throw err;
   }
 }
 
 export async function getPestTreatmentStream(query: string, onChunk: (text: string) => void) {
+  ensureApiKey();
   const systemInstruction = `You are a specialist in agricultural pest and disease management. 
   Your primary task is to identify pests/diseases and provide detailed treatment methods including:
   1. Identification (physical description/symptoms).
@@ -329,15 +511,25 @@ export async function getPestTreatmentStream(query: string, onChunk: (text: stri
   Format your response clearly using markdown with headings, lists, and bold text for key terms. 
   Keep advice practical and safe. If you recommend chemicals, emphasize safety protocols.`;
 
-  const result = await ai.models.generateContentStream({
-    model: "gemini-3-flash-preview",
-    contents: query,
-    config: {
-      systemInstruction,
-    }
-  });
+  try {
+    const result = await ai.models.generateContentStream({
+      model: "gemini-3-flash-preview",
+      contents: query,
+      config: {
+        systemInstruction,
+      }
+    });
 
-  for await (const chunk of result) {
-    onChunk(chunk.text || "");
+    for await (const chunk of result) {
+      onChunk(chunk.text || "");
+    }
+  } catch (err: any) {
+    console.error("Pest Treatment Stream error:", err);
+    if (isQuotaError(err)) {
+      onChunk("Pest analysis limit reached. Please wait a moment and try again.");
+      return;
+    }
+    throw err;
   }
 }
+

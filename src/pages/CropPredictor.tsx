@@ -70,7 +70,11 @@ export default function CropPredictor() {
       setResult(prediction);
     } catch (err: any) {
       console.error('Prediction error:', err);
-      setError('Failed to generate prediction. Please try again.');
+      if (err.message?.includes("AI processing limit")) {
+        setError(err.message);
+      } else {
+        setError('Failed to generate prediction. Please try again or check your internet connection.');
+      }
     } finally {
       setLoading(false);
     }

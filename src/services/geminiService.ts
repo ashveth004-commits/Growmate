@@ -70,6 +70,27 @@ function isQuotaError(err: any): boolean {
   );
 }
 
+function isApiDisabledError(err: any): boolean {
+  const msg = err.message || "";
+  const errString = typeof err === 'string' ? err : JSON.stringify(err);
+  return (
+    msg.includes("Gemini API has not been used") || 
+    msg.includes("disabled") ||
+    errString.includes("PERMISSION_DENIED") ||
+    errString.includes("403")
+  );
+}
+
+function handleAIError(err: any): string {
+  if (isQuotaError(err)) {
+    return "AI processing limit reached. Please try again in 60 seconds.";
+  }
+  if (isApiDisabledError(err)) {
+    return "Gemini API is not enabled for this project. If you are on Vercel, please ensure 'Generative Language API' is enabled in your Google Cloud Console for the API key project.";
+  }
+  return "An error occurred while communicating with the AI. Please try again.";
+}
+
 function parseAIJSON(text: string) {
   try {
     let cleanText = text || "{}";
@@ -147,17 +168,17 @@ export async function generatePlantProfile(species: string, plantationDate: stri
     return data;
   } catch (err: any) {
     console.error("Plant profile generation error:", err);
-    if (isQuotaError(err)) {
-      return {
-        expectedLifespan: "Unknown",
-        description: "Plant profile is temporarily unavailable due to high demand. Please try again in a few minutes.",
-        careGuide: { watering: "N/A", sunlight: "N/A", temperature: "N/A", humidity: "N/A", soil: "N/A", repotting: "N/A" },
-        fertilizerTimeline: [],
-        growthExpectations: "Information currently unavailable.",
-        seasonalCareTips: "Information currently unavailable."
-      };
-    }
-    throw err;
+    
+    const fallbackData = {
+      expectedLifespan: "Unknown",
+      description: handleAIError(err),
+      careGuide: { watering: "N/A", sunlight: "N/A", temperature: "N/A", humidity: "N/A", soil: "N/A", repotting: "N/A" },
+      fertilizerTimeline: [],
+      growthExpectations: "Information currently unavailable.",
+      seasonalCareTips: "Information currently unavailable."
+    };
+    
+    return fallbackData;
   }
 }
 
@@ -188,14 +209,11 @@ export async function diagnosePlantProblem(species: string, issueDescription: st
     return parseAIJSON(response.text || "{}");
   } catch (err: any) {
     console.error("Diagnosis error:", err);
-    if (isQuotaError(err)) {
-      return {
-        possibleCause: "AI Diagnostics Limit Reached",
-        suggestedSolution: "We've hit our analysis limit momentarily. Please try again shortly or check basic care guides for common issues.",
-        riskLevel: "medium"
-      };
-    }
-    throw err;
+    return {
+      possibleCause: "AI Diagnostics Error",
+      suggestedSolution: handleAIError(err),
+      riskLevel: "medium"
+    };
   }
 }
 
@@ -223,10 +241,7 @@ export async function getPlantChatResponse(plant: Plant, message: string, histor
     return response.text;
   } catch (err: any) {
     console.error("Chat response error:", err);
-    if (isQuotaError(err)) {
-      return "I'm currently taking a short break due to high traffic! Please ask me again in a minute or two.";
-    }
-    throw err;
+    return handleAIError(err);
   }
 }
 
@@ -256,11 +271,7 @@ export async function getPlantChatResponseStream(plant: Plant, message: string, 
     }
   } catch (err: any) {
     console.error("Chat Stream error:", err);
-    if (isQuotaError(err)) {
-      onChunk("I'm currently overwhelmed with requests. Please try again in 60 seconds.");
-      return;
-    }
-    throw err;
+    onChunk(handleAIError(err));
   }
 }
 
@@ -399,10 +410,7 @@ export async function predictCropYield(input: any, weather: any, location: { lat
     return data;
   } catch (err: any) {
     console.error("Failed to predict crop yield:", err);
-    if (isQuotaError(err)) {
-      throw new Error("We've hit our AI processing limit for today. Please try again tomorrow or later tonight.");
-    }
-    throw new Error("Invalid response from AI or network error.");
+    throw new Error(handleAIError(err));
   }
 }
 
@@ -470,10 +478,7 @@ export async function getFarmerGPTResponse(message: string) {
     return response.text;
   } catch (err: any) {
     console.error("FarmerGPT response error:", err);
-    if (isQuotaError(err)) {
-      return "I'm currently at full capacity helping other farmers. Please try again in a few minutes!";
-    }
-    throw err;
+    return handleAIError(err);
   }
 }
 
@@ -505,11 +510,7 @@ export async function getFarmerGPTResponseStream(message: string, onChunk: (text
     }
   } catch (err: any) {
     console.error("FarmerGPT Stream error:", err);
-    if (isQuotaError(err)) {
-      onChunk("My agricultural databases are currently busy. Please try again soon.");
-      return;
-    }
-    throw err;
+    onChunk(handleAIError(err));
   }
 }
 
@@ -540,11 +541,7 @@ export async function getPestTreatmentStream(query: string, onChunk: (text: stri
     }
   } catch (err: any) {
     console.error("Pest Treatment Stream error:", err);
-    if (isQuotaError(err)) {
-      onChunk("Pest analysis limit reached. Please wait a moment and try again.");
-      return;
-    }
-    throw err;
+    onChunk(handleAIError(err));
   }
 }
 

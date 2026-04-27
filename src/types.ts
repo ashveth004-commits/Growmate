@@ -5,6 +5,12 @@ export interface UserProfile {
   photoURL?: string;
   role: 'user' | 'admin';
   createdAt?: string;
+  farmerName?: string;
+  farmName?: string;
+  farmLocation?: string;
+  experience?: string;
+  primaryCrops?: string[];
+  bio?: string;
 }
 
 export interface Plant {

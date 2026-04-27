@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { User, Bell, Shield, Settings, LogOut, ChevronRight, Mail, Phone, MapPin, Globe, Check, Download } from 'lucide-react';
+import { User, Bell, Shield, Settings, LogOut, ChevronRight, Mail, Phone, MapPin, Globe, Check, Download, Landmark, Briefcase, Shovel } from 'lucide-react';
 import { useTranslation } from '../context/LanguageContext';
 import { auth, db } from '../firebase';
 import { onAuthStateChanged, User as FirebaseUser, signOut } from 'firebase/auth';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
+import { UserProfile } from '../types';
 
 export default function Profile() {
   const { t, language, setLanguage } = useTranslation();
@@ -26,6 +27,14 @@ export default function Profile() {
     measurementUnit: 'kg',
   });
 
+  const [farmerProfile, setFarmerProfile] = useState<Partial<UserProfile>>({
+    farmerName: '',
+    farmName: '',
+    farmLocation: '',
+    experience: '',
+    bio: ''
+  });
+
   useEffect(() => {
     const isGuestUser = localStorage.getItem('isGuest') === 'true';
     if (isGuestUser) {
@@ -42,6 +51,13 @@ export default function Profile() {
           const data = userDoc.data();
           if (data.notifications) setNotificationSettings(data.notifications);
           if (data.settings) setAppSettings(data.settings);
+          setFarmerProfile({
+            farmerName: data.farmerName || '',
+            farmName: data.farmName || '',
+            farmLocation: data.farmLocation || '',
+            experience: data.experience || '',
+            bio: data.bio || ''
+          });
         }
       }
       setLoading(false);
@@ -93,6 +109,7 @@ export default function Profile() {
       await updateDoc(doc(db, 'users', user.uid), {
         notifications: notificationSettings,
         settings: appSettings,
+        ...farmerProfile,
         updatedAt: new Date().toISOString()
       });
       // Show success toast or feedback
@@ -150,13 +167,20 @@ export default function Profile() {
                 <Check className="w-3 h-3 text-white" />
               </div>
             </div>
-            <h2 className="text-xl font-bold text-stone-900">{displayUser?.displayName || 'User'}</h2>
-            <p className="text-sm text-stone-500 mb-6">{displayUser?.email}</p>
+            <h2 className="text-xl font-bold text-stone-900">
+              {farmerProfile.farmerName || displayUser?.displayName || 'User'}
+            </h2>
+            {farmerProfile.farmName && (
+              <p className="text-sm text-green-600 font-bold mt-0.5">{farmerProfile.farmName}</p>
+            )}
+            <p className="text-xs text-stone-500 mb-6">{displayUser?.email}</p>
             
             <div className="space-y-3 text-left">
               <div className="flex items-center gap-3 p-3 bg-stone-50 rounded-xl">
-                <Mail className="w-4 h-4 text-stone-400" />
-                <span className="text-xs font-medium text-stone-600 truncate">{displayUser?.email}</span>
+                <MapPin className="w-4 h-4 text-stone-400" />
+                <span className="text-xs font-medium text-stone-600 truncate">
+                  {farmerProfile.farmLocation || t('not_provided')}
+                </span>
               </div>
               <div className="flex items-center gap-3 p-3 bg-stone-50 rounded-xl">
                 <Phone className="w-4 h-4 text-stone-400" />
@@ -196,6 +220,89 @@ export default function Profile() {
 
         {/* Right Column: Settings Sections */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Farmer Profile Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="bg-white rounded-[2rem] border border-stone-100 shadow-sm overflow-hidden"
+          >
+            <div className="p-6 border-b border-stone-50 bg-stone-50/50 flex items-center gap-3 text-stone-900">
+              <Shovel className="w-5 h-5 text-green-600" />
+              <h3 className="font-bold">Farmer Profile</h3>
+            </div>
+            <div className="p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-stone-500 uppercase tracking-wider">Farmer Name</label>
+                  <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+                    <input
+                      type="text"
+                      value={farmerProfile.farmerName}
+                      onChange={(e) => setFarmerProfile(prev => ({ ...prev, farmerName: e.target.value }))}
+                      placeholder="e.g. John Doe"
+                      className="w-full pl-11 pr-4 py-3 bg-stone-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-green-500/20"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-stone-500 uppercase tracking-wider">Farm Name</label>
+                  <div className="relative">
+                    <Landmark className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+                    <input
+                      type="text"
+                      value={farmerProfile.farmName}
+                      onChange={(e) => setFarmerProfile(prev => ({ ...prev, farmName: e.target.value }))}
+                      placeholder="e.g. Green Valley Farm"
+                      className="w-full pl-11 pr-4 py-3 bg-stone-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-green-500/20"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-stone-500 uppercase tracking-wider">Farm Location</label>
+                  <div className="relative">
+                    <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+                    <input
+                      type="text"
+                      value={farmerProfile.farmLocation}
+                      onChange={(e) => setFarmerProfile(prev => ({ ...prev, farmLocation: e.target.value }))}
+                      placeholder="e.g. Pune, Maharashtra"
+                      className="w-full pl-11 pr-4 py-3 bg-stone-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-green-500/20"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-stone-500 uppercase tracking-wider">Experience</label>
+                  <div className="relative">
+                    <Briefcase className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
+                    <input
+                      type="text"
+                      value={farmerProfile.experience}
+                      onChange={(e) => setFarmerProfile(prev => ({ ...prev, experience: e.target.value }))}
+                      placeholder="e.g. 5+ Years"
+                      className="w-full pl-11 pr-4 py-3 bg-stone-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-green-500/20"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-stone-500 uppercase tracking-wider">Farmer Bio</label>
+                <textarea
+                  value={farmerProfile.bio}
+                  onChange={(e) => setFarmerProfile(prev => ({ ...prev, bio: e.target.value }))}
+                  placeholder="Tell us about yourself and your farm..."
+                  rows={3}
+                  className="w-full p-4 bg-stone-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-green-500/20 resize-none"
+                />
+              </div>
+            </div>
+          </motion.div>
+
           {/* NotificationsSection */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}

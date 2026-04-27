@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot, collectionGroup } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { Plant, CareSchedule } from '../types';
-import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Droplets, Sun, History, Leaf, Scissors } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, isToday, parseISO } from 'date-fns';
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, Droplets, Sun, History, Leaf, Scissors, Plus, X, AlertCircle } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, addMonths, subMonths, isToday, parseISO, startOfDay } from 'date-fns';
 import { cn } from '../lib/utils';
+import { motion, AnimatePresence } from 'motion/react';
 
 const taskConfig = {
   watering: { icon: Droplets, color: "bg-blue-50 text-blue-700 border-blue-100" },
@@ -18,6 +19,14 @@ export default function Calendar() {
   const [plants, setPlants] = useState<Plant[]>([]);
   const [schedules, setSchedules] = useState<CareSchedule[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [selectedPlantId, setSelectedPlantId] = useState('');
+  const [taskType, setTaskType] = useState<CareSchedule['type']>('watering');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const isGuest = localStorage.getItem('isGuest') === 'true';
@@ -67,6 +76,48 @@ export default function Calendar() {
   const nextMonth = () => setCurrentMonth(addMonths(currentMonth, 1));
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
 
+  const handleDateClick = (day: Date) => {
+    setSelectedDate(day);
+    setIsModalOpen(true);
+    if (plants.length > 0 && !selectedPlantId) {
+      setSelectedPlantId(plants[0].id);
+    }
+  };
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDate || !selectedPlantId || !taskType) return;
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const scheduleData = {
+        plantId: selectedPlantId,
+        type: taskType,
+        nextDate: selectedDate.toISOString(),
+        frequency: 'one-time', // For tasks created via calendar
+        reminderEnabled: true,
+        createdAt: new Date().toISOString()
+      };
+
+      await addDoc(collection(db, `plants/${selectedPlantId}/schedules`), scheduleData);
+      setIsModalOpen(false);
+      resetForm();
+    } catch (err: any) {
+      console.error('Error creating task:', err);
+      setError("Failed to create task. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const resetForm = () => {
+    setSelectedPlantId(plants.length > 0 ? plants[0].id : '');
+    setTaskType('watering');
+    setError(null);
+  };
+
   if (loading) return <div className="flex items-center justify-center h-64"><Leaf className="animate-bounce text-green-600 w-8 h-8" /></div>;
 
   return (
@@ -107,16 +158,23 @@ export default function Calendar() {
             const daySchedules = schedules.filter(s => isSameDay(parseISO(s.nextDate), day));
             
             return (
-              <div key={day.toString()} className={cn(
-                "h-40 border-b border-r border-stone-100 p-2 relative group hover:bg-stone-50/50 transition-colors",
-                isToday(day) && "bg-green-50/30"
-              )}>
-                <span className={cn(
-                  "text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full mb-2",
-                  isToday(day) ? "bg-green-600 text-white shadow-lg shadow-green-100" : "text-stone-400"
-                )}>
-                  {format(day, 'd')}
-                </span>
+              <button 
+                key={day.toString()} 
+                onClick={() => handleDateClick(day)}
+                className={cn(
+                  "h-40 border-b border-r border-stone-100 p-2 relative group hover:bg-stone-50 transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-green-500/20 z-10",
+                  isToday(day) && "bg-green-50/30"
+                )}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className={cn(
+                    "text-sm font-bold w-7 h-7 flex items-center justify-center rounded-full",
+                    isToday(day) ? "bg-green-600 text-white shadow-lg shadow-green-100" : "text-stone-400"
+                  )}>
+                    {format(day, 'd')}
+                  </span>
+                  <Plus className="w-4 h-4 text-stone-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
                 
                 <div className="space-y-1 overflow-y-auto max-h-[calc(100%-2.5rem)] pb-1 scrollbar-hide">
                   {daySchedules.map((schedule) => {
@@ -143,11 +201,127 @@ export default function Calendar() {
                     <p className="text-[10px] text-stone-300 italic text-center mt-4">No tasks</p>
                   )}
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
       </div>
+
+      {/* Task Creation Modal */}
+      <AnimatePresence>
+        {isModalOpen && selectedDate && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsModalOpen(false)}
+              className="absolute inset-0 bg-stone-900/40 backdrop-blur-sm"
+            />
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-white rounded-[2rem] shadow-2xl shadow-stone-900/20 overflow-hidden"
+            >
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h2 className="text-2xl font-bold text-stone-900 tracking-tight">Add Task</h2>
+                    <p className="text-stone-500 font-medium">{format(selectedDate, 'EEEE, MMMM do')}</p>
+                  </div>
+                  <button 
+                    onClick={() => setIsModalOpen(false)}
+                    className="p-3 bg-stone-100 text-stone-500 hover:bg-stone-200 hover:text-stone-900 rounded-2xl transition-all"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleCreateTask} className="space-y-6">
+                  {error && (
+                    <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl flex items-center gap-2 text-sm">
+                      <AlertCircle className="w-4 h-4" />
+                      {error}
+                    </div>
+                  )}
+
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-stone-400 uppercase tracking-wider ml-1">Select Plant</label>
+                      <select
+                        value={selectedPlantId}
+                        onChange={(e) => setSelectedPlantId(e.target.value)}
+                        className="w-full px-5 py-4 bg-stone-50 border border-stone-100 rounded-2xl text-stone-900 font-medium focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all appearance-none"
+                        required
+                      >
+                        {plants.length === 0 ? (
+                          <option value="" disabled>No plants found</option>
+                        ) : (
+                          plants.map(plant => (
+                            <option key={plant.id} value={plant.id}>{plant.name}</option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-stone-400 uppercase tracking-wider ml-1">Task Type</label>
+                      <div className="grid grid-cols-2 gap-3">
+                        {Object.entries(taskConfig).map(([type, config]) => {
+                          const Icon = config.icon;
+                          const isSelected = taskType === type;
+                          return (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() => setTaskType(type as CareSchedule['type'])}
+                              className={cn(
+                                "flex items-center gap-3 p-4 rounded-2xl border transition-all text-left",
+                                isSelected 
+                                  ? "bg-green-600 border-green-600 text-white shadow-lg shadow-green-200" 
+                                  : "bg-white border-stone-100 text-stone-600 hover:border-stone-200"
+                              )}
+                            >
+                              <Icon className={cn("w-5 h-5", isSelected ? "text-white" : "text-stone-400")} />
+                              <span className="text-sm font-bold capitalize">{type}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setIsModalOpen(false)}
+                      className="flex-1 px-6 py-4 bg-stone-100 text-stone-600 font-bold rounded-2xl hover:bg-stone-200 transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || plants.length === 0}
+                      className="flex-[2] px-6 py-4 bg-green-600 text-white font-bold rounded-2xl hover:bg-green-700 shadow-xl shadow-green-200 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+                    >
+                      {isSubmitting ? (
+                        <Leaf className="w-5 h-5 animate-spin" />
+                      ) : (
+                        <>
+                          <Plus className="w-5 h-5" />
+                          Add Task
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Legend */}
       <div className="flex flex-wrap gap-6 justify-center items-center bg-white p-6 rounded-3xl border border-stone-100 shadow-sm">

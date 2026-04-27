@@ -46,7 +46,7 @@ export interface FertilizerEvent {
 export interface CareSchedule {
   id: string;
   plantId: string;
-  type: 'watering' | 'fertilizing' | 'repotting' | 'pruning';
+  type: 'watering' | 'fertilizing' | 'repotting' | 'pruning' | 'other' | string;
   frequency: string;
   nextDate: string;
   reminderEnabled: boolean;
@@ -68,6 +68,9 @@ export interface WateringLog {
   plantId: string;
   date: string;
   status: string;
+  amount?: string;
+  method?: string;
+  notes?: string;
 }
 
 export interface HealthIssue {

@@ -8,7 +8,7 @@ import { diagnosePlantProblem, getPlantChatResponse, getPlantChatResponseStream 
 import { 
   Leaf, Droplets, Sun, Thermometer, Wind, Sprout, 
   Calendar as CalendarIcon, History, MessageCircle, 
-  AlertCircle, CheckCircle2, Plus, Send, Loader2, Ruler, MapPin,
+  AlertCircle, CheckCircle2, Plus, Send, Loader2, Ruler, MapPin, Target,
   ChevronRight, ArrowLeft, Info, Sparkles, Edit2, X, Save, Trash2,
   Camera, Scissors, Bell, BellOff
 } from 'lucide-react';
@@ -30,7 +30,12 @@ export default function PlantProfile() {
   const [fertilizerLogs, setFertilizerLogs] = useState<FertilizerLog[]>([]);
   const [schedules, setSchedules] = useState<CareSchedule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'care' | 'timeline' | 'chat'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'care' | 'timeline' | 'history' | 'chat'>('overview');
+  const [otherActivityForm, setOtherActivityForm] = useState({
+    type: '',
+    notes: '',
+    date: new Date().toISOString().split('T')[0]
+  });
 
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
@@ -75,6 +80,9 @@ export default function PlantProfile() {
   // Care Logging State
   const [wateringForm, setWateringForm] = useState({
     status: 'Applied' as string,
+    amount: '',
+    method: 'Top Watering',
+    notes: '',
     date: new Date().toISOString().split('T')[0]
   });
   const [fertilizingForm, setFertilizingForm] = useState({
@@ -91,6 +99,7 @@ export default function PlantProfile() {
   const [showReminderForm, setShowReminderForm] = useState(false);
   const [reminderForm, setReminderForm] = useState({
     type: 'watering' as CareSchedule['type'],
+    customTaskName: '',
     frequency: 'Weekly',
     customFrequencyValue: '1',
     customFrequencyUnit: 'days',
@@ -229,6 +238,28 @@ export default function PlantProfile() {
     }
   };
 
+  const handleLogOtherActivity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!id || !plant || !otherActivityForm.type) return;
+    setLoggingCare(true);
+    try {
+      await addDoc(collection(db, `plants/${id}/timeline`), {
+        date: new Date(otherActivityForm.date).toISOString(),
+        type: otherActivityForm.type,
+        description: otherActivityForm.notes || `Logged activity: ${otherActivityForm.type}`
+      });
+      setOtherActivityForm({
+        type: '',
+        notes: '',
+        date: new Date().toISOString().split('T')[0]
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `plants/${id}/timeline`);
+    } finally {
+      setLoggingCare(false);
+    }
+  };
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!plant || !chatMessage.trim() || chatLoading) return;
@@ -324,15 +355,24 @@ export default function PlantProfile() {
       const logData = {
         plantId: id,
         date: new Date(wateringForm.date).toISOString(),
-        status: wateringForm.status
+        status: wateringForm.status,
+        amount: wateringForm.amount,
+        method: wateringForm.method,
+        notes: wateringForm.notes
       };
       await addDoc(collection(db, `plants/${id}/wateringLogs`), logData);
       await addDoc(collection(db, `plants/${id}/timeline`), {
         date: new Date().toISOString(),
         type: 'Watering Logged',
-        description: `Watering event logged: ${wateringForm.status} on ${wateringForm.date}`
+        description: `Watering event logged: ${wateringForm.status} (${wateringForm.amount || 'No amount specified'}) using ${wateringForm.method}`
       });
-      setWateringForm(prev => ({ ...prev, date: new Date().toISOString().split('T')[0] }));
+      setWateringForm({
+        status: 'Applied',
+        amount: '',
+        method: 'Top Watering',
+        notes: '',
+        date: new Date().toISOString().split('T')[0]
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `plants/${id}/wateringLogs`);
     } finally {
@@ -384,9 +424,11 @@ export default function PlantProfile() {
         ? `Every ${reminderForm.customFrequencyValue} ${reminderForm.customFrequencyUnit}`
         : reminderForm.frequency;
 
+      const finalType = reminderForm.type === 'other' ? reminderForm.customTaskName : reminderForm.type;
+
       const reminderData = {
         plantId: id,
-        type: reminderForm.type,
+        type: finalType,
         frequency: finalFrequency,
         reminderEnabled: reminderForm.reminderEnabled,
         nextDate: new Date(reminderForm.nextDate).toISOString()
@@ -395,11 +437,12 @@ export default function PlantProfile() {
       await addDoc(collection(db, `plants/${id}/timeline`), {
         date: new Date().toISOString(),
         type: 'Reminder Added',
-        description: `Added ${reminderForm.type} reminder: ${finalFrequency}, next on ${reminderForm.nextDate}`
+        description: `Added ${finalType} reminder: ${finalFrequency}, next on ${reminderForm.nextDate}`
       });
       setShowReminderForm(false);
       setReminderForm({
         type: 'watering',
+        customTaskName: '',
         frequency: 'Weekly',
         customFrequencyValue: '1',
         customFrequencyUnit: 'days',
@@ -446,9 +489,52 @@ export default function PlantProfile() {
         // Use Firebase Storage if available
         const isGuest = localStorage.getItem('isGuest') === 'true';
         const userId = auth.currentUser?.uid || (isGuest ? 'guest-123' : 'unknown');
-        const storageRef = ref(storage, `plants/${userId}/${id}/${Date.now()}_${file.name}`);
-        const snapshot = await uploadBytes(storageRef, file);
-        finalPhotoUrl = await getDownloadURL(snapshot.ref);
+        
+        const uploadTask = async () => {
+          const storageRef = ref(storage, `plants/${userId}/${id}/${Date.now()}_${file.name}`);
+          const snapshot = await uploadBytes(storageRef, file);
+          return await getDownloadURL(snapshot.ref);
+        };
+
+        try {
+          finalPhotoUrl = await Promise.race([
+            uploadTask(),
+            new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Fast Timeout')), 5000))
+          ]);
+        } catch (err: any) {
+          console.log("Using optimized update fallback for photo.");
+          
+          const compressImage = (file: File): Promise<string> => {
+            return new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.readAsDataURL(file);
+              reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target?.result as string;
+                img.onload = () => {
+                  const canvas = document.createElement('canvas');
+                  const MAX_SIZE = 800;
+                  let width = img.width;
+                  let height = img.height;
+                  if (width > height) {
+                    if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
+                  } else {
+                    if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
+                  }
+                  canvas.width = width;
+                  canvas.height = height;
+                  const ctx = canvas.getContext('2d');
+                  ctx?.drawImage(img, 0, 0, width, height);
+                  resolve(canvas.toDataURL('image/jpeg', 0.6));
+                };
+                img.onerror = reject;
+              };
+              reader.onerror = reject;
+            });
+          };
+          
+          finalPhotoUrl = await compressImage(file);
+        }
       } else {
         // Fallback to base64 if storage is not configured
         const reader = new FileReader();
@@ -633,7 +719,7 @@ export default function PlantProfile() {
         </div>
 
         <div className="flex border-b border-stone-100">
-          {(['overview', 'care', 'timeline', 'chat'] as const).map((tab) => (
+          {(['overview', 'care', 'timeline', 'history', 'chat'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1215,18 +1301,37 @@ export default function PlantProfile() {
               {showReminderForm && (
                 <div className="p-8 bg-stone-50/50 border-b border-stone-100">
                   <form onSubmit={handleAddReminder} className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
-                    <div className="space-y-2">
+                    <div className={cn(
+                      "space-y-2",
+                      reminderForm.type === 'other' ? "md:col-span-2" : "md:col-span-1"
+                    )}>
                       <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Task Type</label>
-                      <select 
-                        className="w-full px-4 py-3 rounded-2xl bg-white border border-stone-200 focus:border-green-500 outline-none transition-all text-sm font-bold"
-                        value={reminderForm.type}
-                        onChange={(e) => setReminderForm(prev => ({ ...prev, type: e.target.value as any }))}
-                      >
-                        <option value="watering">Watering</option>
-                        <option value="fertilizing">Fertilizing</option>
-                        <option value="repotting">Repotting</option>
-                        <option value="pruning">Pruning</option>
-                      </select>
+                      <div className="flex gap-2">
+                        <select 
+                          className={cn(
+                            "px-4 py-3 rounded-2xl bg-white border border-stone-200 focus:border-green-500 outline-none transition-all text-sm font-bold",
+                            reminderForm.type === 'other' ? "flex-1" : "w-full"
+                          )}
+                          value={reminderForm.type}
+                          onChange={(e) => setReminderForm(prev => ({ ...prev, type: e.target.value as any }))}
+                        >
+                          <option value="watering">Watering</option>
+                          <option value="fertilizing">Fertilizing</option>
+                          <option value="repotting">Repotting</option>
+                          <option value="pruning">Pruning</option>
+                          <option value="other">Other</option>
+                        </select>
+                        {reminderForm.type === 'other' && (
+                          <input 
+                            type="text"
+                            placeholder="Task name"
+                            required
+                            className="flex-[2] px-4 py-3 rounded-2xl bg-white border border-stone-200 focus:border-green-500 outline-none transition-all text-sm font-bold"
+                            value={reminderForm.customTaskName}
+                            onChange={(e) => setReminderForm(prev => ({ ...prev, customTaskName: e.target.value }))}
+                          />
+                        )}
+                      </div>
                     </div>
                     <div className={cn(
                       "space-y-2",
@@ -1247,6 +1352,35 @@ export default function PlantProfile() {
                       </select>
                     </div>
 
+                    <div className={cn(
+                      "space-y-2",
+                      reminderForm.frequency === 'Custom' ? "md:col-span-1" : "md:col-span-1"
+                    )}>
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Starting On</label>
+                      <input 
+                        type="date"
+                        required
+                        className="w-full px-4 py-3 rounded-2xl bg-white border border-stone-200 focus:border-green-500 outline-none transition-all text-sm font-bold"
+                        value={reminderForm.nextDate}
+                        onChange={(e) => setReminderForm(prev => ({ ...prev, nextDate: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-1">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Notifications</label>
+                      <button
+                        type="button"
+                        onClick={() => setReminderForm(prev => ({ ...prev, reminderEnabled: !prev.reminderEnabled }))}
+                        className={cn(
+                          "w-full flex items-center justify-center gap-3 px-4 py-3 rounded-2xl border transition-all font-bold text-sm",
+                          reminderForm.reminderEnabled 
+                            ? "bg-green-50 border-green-200 text-green-700" 
+                            : "bg-stone-50 border-stone-200 text-stone-500"
+                        )}
+                      >
+                        {reminderForm.reminderEnabled ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+                        {reminderForm.reminderEnabled ? 'Enabled' : 'Disabled'}
+                      </button>
+                    </div>
                     {reminderForm.frequency === 'Custom' && (
                       <div className="md:col-span-1 space-y-2">
                         <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Every</label>
@@ -1276,21 +1410,8 @@ export default function PlantProfile() {
                     )}
 
                     <div className={cn(
-                      "space-y-2",
-                      reminderForm.frequency === 'Custom' ? "md:col-span-1" : "md:col-span-1"
-                    )}>
-                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Starting On</label>
-                      <input 
-                        type="date"
-                        required
-                        className="w-full px-4 py-3 rounded-2xl bg-white border border-stone-200 focus:border-green-500 outline-none transition-all text-sm font-bold"
-                        value={reminderForm.nextDate}
-                        onChange={(e) => setReminderForm(prev => ({ ...prev, nextDate: e.target.value }))}
-                      />
-                    </div>
-                    <div className={cn(
                       "flex items-end",
-                      reminderForm.frequency === 'Custom' ? "md:col-span-4 mt-2" : "md:col-span-1"
+                      reminderForm.frequency === 'Custom' || reminderForm.type === 'other' ? "md:col-span-4 mt-2" : "md:col-span-4 mt-2"
                     )}>
                       <button 
                         type="submit"
@@ -1383,7 +1504,32 @@ export default function PlantProfile() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Status</label>
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Volume / Amount</label>
+                        <input 
+                          type="text"
+                          placeholder="e.g. 500ml"
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-blue-500 outline-none transition-all text-sm"
+                          value={wateringForm.amount}
+                          onChange={(e) => setWateringForm(prev => ({ ...prev, amount: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Watering Method</label>
+                        <select 
+                          className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-blue-500 outline-none transition-all text-sm"
+                          value={wateringForm.method}
+                          onChange={(e) => setWateringForm(prev => ({ ...prev, method: e.target.value }))}
+                        >
+                          <option value="Top Watering">Top Watering</option>
+                          <option value="Bottom Watering">Bottom Watering</option>
+                          <option value="Misting">Misting</option>
+                          <option value="Submersion">Submersion</option>
+                        </select>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Initial Status</label>
                         <select 
                           className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-blue-500 outline-none transition-all text-sm"
                           value={wateringForm.status}
@@ -1394,6 +1540,16 @@ export default function PlantProfile() {
                           <option value="Deep Watering">Deep Watering</option>
                         </select>
                       </div>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Notes (Optional)</label>
+                      <input 
+                        type="text"
+                        placeholder="e.g. Added liquid fertilizer or used rain water"
+                        className="w-full px-4 py-2.5 rounded-xl bg-stone-50 border border-stone-100 focus:border-blue-500 outline-none transition-all text-sm"
+                        value={wateringForm.notes}
+                        onChange={(e) => setWateringForm(prev => ({ ...prev, notes: e.target.value }))}
+                      />
                     </div>
                     <button 
                       type="submit"
@@ -1413,13 +1569,24 @@ export default function PlantProfile() {
                       <p className="text-stone-400 text-sm italic text-center py-8">No watering events logged yet.</p>
                     ) : (
                       wateringLogs.map(log => (
-                        <div key={log.id} className="flex items-center justify-between p-4 rounded-2xl bg-stone-50/50 border border-stone-100">
-                          <div>
-                            <p className="text-sm font-bold text-stone-900">{format(parseISO(log.date), 'MMMM d, yyyy')}</p>
-                            <p className="text-xs text-stone-500">{log.status}</p>
+                        <div key={log.id} className="p-4 rounded-2xl bg-stone-50/50 border border-stone-100">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">{format(parseISO(log.date), 'MMMM d, yyyy')}</p>
+                            <span className="text-[10px] font-bold bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full uppercase">
+                              {log.status}
+                            </span>
                           </div>
-                          <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
-                            <Droplets className="w-4 h-4" />
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-stone-900">{log.method || 'Top Watering'}</span>
+                                {log.amount && <span className="text-xs text-stone-500">• {log.amount}</span>}
+                              </div>
+                              {log.notes && <p className="text-xs text-stone-400 italic">"{log.notes}"</p>}
+                            </div>
+                            <div className="bg-blue-100 p-2 rounded-lg text-blue-600">
+                              <Droplets className="w-4 h-4" />
+                            </div>
                           </div>
                         </div>
                       ))
@@ -1562,6 +1729,153 @@ export default function PlantProfile() {
                   </div>
                 </section>
               </div>
+            </div>
+
+            {/* Log Other Activity Form */}
+            <section className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="bg-stone-100 p-3 rounded-2xl text-stone-600">
+                  <Plus className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-stone-900">Log Other Activity</h2>
+                  <p className="text-sm text-stone-500">Record pruning, pest control, or any other care task.</p>
+                </div>
+              </div>
+              <form onSubmit={handleLogOtherActivity} className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Activity Type</label>
+                    <input 
+                      type="text"
+                      required
+                      placeholder="e.g. Pruning, Pest Control"
+                      className="w-full px-4 py-3 rounded-2xl bg-stone-50 border border-stone-100 focus:border-green-500 shadow-sm outline-none transition-all text-sm font-bold"
+                      value={otherActivityForm.type}
+                      onChange={(e) => setOtherActivityForm(prev => ({ ...prev, type: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Date</label>
+                    <input 
+                      type="date"
+                      required
+                      className="w-full px-4 py-3 rounded-2xl bg-stone-50 border border-stone-100 focus:border-green-500 shadow-sm outline-none transition-all text-sm font-bold"
+                      value={otherActivityForm.date}
+                      onChange={(e) => setOtherActivityForm(prev => ({ ...prev, date: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-stone-400 uppercase tracking-wider ml-1">Notes (Optional)</label>
+                    <input 
+                      type="text"
+                      placeholder="Details about the activity..."
+                      className="w-full px-4 py-3 rounded-2xl bg-stone-50 border border-stone-100 focus:border-green-500 shadow-sm outline-none transition-all text-sm font-bold"
+                      value={otherActivityForm.notes}
+                      onChange={(e) => setOtherActivityForm(prev => ({ ...prev, notes: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <button 
+                  type="submit"
+                  disabled={loggingCare || !otherActivityForm.type}
+                  className="w-full bg-stone-900 text-white py-4 rounded-2xl font-bold hover:bg-stone-800 transition-all shadow-lg shadow-stone-200 flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {loggingCare ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                  Record Activity
+                </button>
+              </form>
+            </section>
+          </motion.div>
+        )}
+
+        {activeTab === 'history' && (
+          <motion.div
+            key="history"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-8"
+          >
+            <div className="flex flex-col gap-6">
+              <section className="bg-white rounded-3xl p-8 border border-stone-100 shadow-sm">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-green-100 p-3 rounded-2xl text-green-700">
+                      <History className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-black text-stone-900 tracking-tight">Plant Care History</h2>
+                      <p className="text-sm text-stone-500 font-medium">Unified view of all care activities.</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {[
+                    ...wateringLogs.map(l => ({ ...l, logType: 'watering' })), 
+                    ...fertilizerLogs.map(l => ({ ...l, logType: 'fertilizing' })),
+                    ...timeline.filter(e => !['Plant Added', 'Reminder Added', 'Watering Logged', 'Fertilizer Logged'].includes(e.type)).map(e => ({ ...e, logType: 'other' }))
+                  ]
+                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                  .map((log, idx) => (
+                    <div key={idx} className="group p-6 rounded-3xl bg-stone-50 border border-stone-100 hover:border-green-200 hover:bg-white hover:shadow-xl hover:shadow-green-900/5 transition-all duration-300">
+                      <div className="flex items-start gap-4">
+                        <div className={cn(
+                          "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-sm transition-transform group-hover:scale-110",
+                          (log as any).logType === 'watering' ? "bg-blue-100 text-blue-600" :
+                          (log as any).logType === 'fertilizing' ? "bg-orange-100 text-orange-600" :
+                          "bg-stone-200 text-stone-600"
+                        )}>
+                          {(log as any).logType === 'watering' && <Droplets className="w-6 h-6" />}
+                          {(log as any).logType === 'fertilizing' && <Sun className="w-6 h-6" />}
+                          {(log as any).logType === 'other' && <Leaf className="w-6 h-6" />}
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-[10px] font-black text-stone-400 uppercase tracking-widest">
+                              {format(parseISO(log.date), 'EEEE, MMMM d, yyyy')}
+                            </span>
+                            <span className={cn(
+                              "text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full",
+                              (log as any).logType === 'watering' ? "bg-blue-50 text-blue-700" :
+                              (log as any).logType === 'fertilizing' ? "bg-orange-50 text-orange-700" :
+                              "bg-stone-100 text-stone-700"
+                            )}>
+                              {(log as any).logType}
+                            </span>
+                          </div>
+                          <h4 className="text-lg font-bold text-stone-900 mb-1">
+                            {(log as any).logType === 'watering' ? (log as any).status :
+                             (log as any).logType === 'fertilizing' ? (log as any).fertilizerName :
+                             (log as any).type}
+                          </h4>
+                          <div className="flex flex-wrap gap-x-4 gap-y-1">
+                            {(log as any).logType === 'watering' && (
+                              <>
+                                {(log as any).amount && <p className="text-xs text-stone-500 font-medium flex items-center gap-1.5"><Droplets className="w-3 h-3 text-stone-300" /> {(log as any).amount}</p>}
+                                {(log as any).method && <p className="text-xs text-stone-500 font-medium flex items-center gap-1.5"><MapPin className="w-3 h-3 text-stone-300" /> {(log as any).method}</p>}
+                              </>
+                            )}
+                            {(log as any).logType === 'fertilizing' && (
+                              <>
+                                <p className="text-xs text-stone-500 font-medium flex items-center gap-1.5"><Target className="w-3 h-3 text-stone-300" /> {(log as any).fertilizerType}</p>
+                                {(log as any).quantity && <p className="text-xs text-stone-500 font-medium flex items-center gap-1.5"><Scissors className="w-3 h-3 text-stone-300" /> {(log as any).quantity}</p>}
+                              </>
+                            )}
+                            {(log as any).description && (log as any).logType === 'other' && (
+                              <p className="text-xs text-stone-500 italic">"{(log as any).description}"</p>
+                            )}
+                            {(log as any).notes && (log as any).logType !== 'other' && (
+                              <p className="text-xs text-stone-400 italic">"{(log as any).notes}"</p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
             </div>
           </motion.div>
         )}

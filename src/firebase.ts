@@ -7,10 +7,9 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// Initialize Firestore with force long polling to avoid connection issues in some environments
+// Initialize Firestore
 export const db = initializeFirestore(app, {
   experimentalForceLongPolling: true,
-  experimentalAutoDetectLongPolling: false,
 }, firebaseConfig.firestoreDatabaseId);
 
 // Test Connection with a small delay to allow network to settle
@@ -37,6 +36,7 @@ let storageInstance: FirebaseStorage | null = null;
 try {
   if (firebaseConfig.storageBucket) {
     storageInstance = getStorage(app);
+    console.log('Firebase Storage initialized with bucket:', firebaseConfig.storageBucket);
   }
 } catch (error) {
   console.error('Firebase Storage initialization failed:', error);

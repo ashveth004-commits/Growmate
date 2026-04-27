@@ -70,6 +70,21 @@ function isQuotaError(err: any): boolean {
   );
 }
 
+function parseAIJSON(text: string) {
+  try {
+    let cleanText = text || "{}";
+    if (cleanText.includes("```json")) {
+      cleanText = cleanText.split("```json")[1].split("```")[0].trim();
+    } else if (cleanText.includes("```")) {
+      cleanText = cleanText.split("```")[1].split("```")[0].trim();
+    }
+    return JSON.parse(cleanText);
+  } catch (e) {
+    console.error("AI JSON Parse Error:", e, "Raw text:", text);
+    throw new Error("Failed to parse AI response. Please try again.");
+  }
+}
+
 export async function generatePlantProfile(species: string, plantationDate: string) {
   ensureApiKey();
   const cacheKey = `plant_profile_${species}_${plantationDate}`;
@@ -127,7 +142,7 @@ export async function generatePlantProfile(species: string, plantationDate: stri
       }
     });
 
-    const data = JSON.parse(response.text || "{}");
+    const data = parseAIJSON(response.text || "{}");
     setCachedData(cacheKey, data);
     return data;
   } catch (err: any) {
@@ -170,7 +185,7 @@ export async function diagnosePlantProblem(species: string, issueDescription: st
       }
     });
 
-    return JSON.parse(response.text || "{}");
+    return parseAIJSON(response.text || "{}");
   } catch (err: any) {
     console.error("Diagnosis error:", err);
     if (isQuotaError(err)) {
@@ -292,7 +307,7 @@ export async function generateWeatherSuggestions(weather: any, plants: Plant[]) 
       }
     });
 
-    const data = JSON.parse(response.text || "{}");
+    const data = parseAIJSON(response.text || "{}");
     setCachedData(cacheKey, data);
     return data;
   } catch (err: any) {
@@ -379,7 +394,7 @@ export async function predictCropYield(input: any, weather: any, location: { lat
 
     const text = result.text;
     if (!text) throw new Error("AI returned empty response");
-    const data = JSON.parse(text);
+    const data = parseAIJSON(text);
     setCachedData(cacheKey, data);
     return data;
   } catch (err: any) {
@@ -418,7 +433,7 @@ export async function refineFarmerVoiceInput(rawTranscript: string) {
       }
     });
 
-    const data = JSON.parse(response.text || "{}");
+    const data = parseAIJSON(response.text || "{}");
     return data.refinedText || rawTranscript;
   } catch (err: any) {
     console.error("Voice refinement error:", err);

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { processAndUploadImage } from '../lib/imageUtils';
 import { generatePlantProfile } from '../services/geminiService';
 import { 
   Leaf, MapPin, Calendar as CalendarIcon, Camera, Loader2, 
@@ -145,66 +146,20 @@ export default function AddPlant() {
       // 1. Upload Image if exists
       let photoUrl = '';
       if (imageFile) {
-        console.log('Processing image...');
+        console.log('Processing image with robust processor...');
         setLoading(true);
-        try {
-          if (storage) {
-            const uploadImage = async () => {
-              const storageRef = ref(storage, `plants/${userId}/${Date.now()}_${imageFile.name}`);
-              const snapshot = await uploadBytes(storageRef, imageFile);
-              return await getDownloadURL(snapshot.ref);
-            };
-
-            // Timeout after 5 seconds - fast switch to fallback
-            photoUrl = await Promise.race([
-              uploadImage(),
-              new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Fast Timeout')), 5000))
-            ]);
-            console.log('Image uploaded successfully to Storage:', photoUrl);
-          } else {
-            throw new Error('Storage disabled');
-          }
-        } catch (storageErr: any) {
-          console.log(`Using optimized fallback for image (Reason: ${storageErr.message})`);
-          
-          // Fallback: Compress and store as Base64 in Firestore
-          try {
-            const compressImage = (file: File): Promise<string> => {
-              return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                reader.onload = (event) => {
-                  const img = new Image();
-                  img.src = event.target?.result as string;
-                  img.onload = () => {
-                    const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 800;
-                    const MAX_HEIGHT = 800;
-                    let width = img.width;
-                    let height = img.height;
-
-                    if (width > height) {
-                      if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-                    } else {
-                      if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx?.drawImage(img, 0, 0, width, height);
-                    resolve(canvas.toDataURL('image/jpeg', 0.6)); // High compression for Firestore safety
-                  };
-                  img.onerror = reject;
-                };
-                reader.onerror = reject;
-              });
-            };
-            
-            photoUrl = await compressImage(imageFile);
-            console.log('Image optimized and saved as fallback data.');
-          } catch (base64Err) {
-            console.error('Photo optimization failed:', base64Err);
-          }
+        const imageResult = await processAndUploadImage(
+          imageFile, 
+          storage, 
+          `plants/${userId}/${Date.now()}_${imageFile.name}`
+        );
+        
+        if (imageResult.url) {
+          photoUrl = imageResult.url;
+          console.log(`Image saved via ${imageResult.method}`);
+        } else if (imageResult.error) {
+          console.error('Image processing error:', imageResult.error);
+          // We continue but the user should know if it was a total failure
         }
       }
 

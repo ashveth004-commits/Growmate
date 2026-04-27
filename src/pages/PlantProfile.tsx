@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc, collection, onSnapshot, query, orderBy, addDoc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { db, auth, storage, handleFirestoreError, OperationType } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { processAndUploadImage } from '../lib/imageUtils';
 import { Plant, TimelineEvent, HealthIssue, CareSchedule, WateringLog, FertilizerLog } from '../types';
 import { diagnosePlantProblem, getPlantChatResponse, getPlantChatResponseStream } from '../services/geminiService';
 import { 
@@ -483,66 +484,20 @@ export default function PlantProfile() {
 
     setUploadingPhoto(true);
     try {
-      let finalPhotoUrl = '';
+      const isGuest = localStorage.getItem('isGuest') === 'true';
+      const userId = auth.currentUser?.uid || (isGuest ? 'guest-123' : 'unknown');
+      
+      const imageResult = await processAndUploadImage(
+        file,
+        storage,
+        `plants/${userId}/${id}/${Date.now()}_${file.name}`
+      );
 
-      if (storage) {
-        // Use Firebase Storage if available
-        const isGuest = localStorage.getItem('isGuest') === 'true';
-        const userId = auth.currentUser?.uid || (isGuest ? 'guest-123' : 'unknown');
-        
-        const uploadTask = async () => {
-          const storageRef = ref(storage, `plants/${userId}/${id}/${Date.now()}_${file.name}`);
-          const snapshot = await uploadBytes(storageRef, file);
-          return await getDownloadURL(snapshot.ref);
-        };
-
-        try {
-          finalPhotoUrl = await Promise.race([
-            uploadTask(),
-            new Promise<string>((_, reject) => setTimeout(() => reject(new Error('Fast Timeout')), 5000))
-          ]);
-        } catch (err: any) {
-          console.log("Using optimized update fallback for photo.");
-          
-          const compressImage = (file: File): Promise<string> => {
-            return new Promise((resolve, reject) => {
-              const reader = new FileReader();
-              reader.readAsDataURL(file);
-              reader.onload = (event) => {
-                const img = new Image();
-                img.src = event.target?.result as string;
-                img.onload = () => {
-                  const canvas = document.createElement('canvas');
-                  const MAX_SIZE = 800;
-                  let width = img.width;
-                  let height = img.height;
-                  if (width > height) {
-                    if (width > MAX_SIZE) { height *= MAX_SIZE / width; width = MAX_SIZE; }
-                  } else {
-                    if (height > MAX_SIZE) { width *= MAX_SIZE / height; height = MAX_SIZE; }
-                  }
-                  canvas.width = width;
-                  canvas.height = height;
-                  const ctx = canvas.getContext('2d');
-                  ctx?.drawImage(img, 0, 0, width, height);
-                  resolve(canvas.toDataURL('image/jpeg', 0.6));
-                };
-                img.onerror = reject;
-              };
-              reader.onerror = reject;
-            });
-          };
-          
-          finalPhotoUrl = await compressImage(file);
-        }
-      } else {
-        // Fallback to base64 if storage is not configured
-        const reader = new FileReader();
-        finalPhotoUrl = await new Promise((resolve) => {
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
+      if (!imageResult.url) {
+        throw new Error(imageResult.error || 'Failed to process image');
       }
+
+      const finalPhotoUrl = imageResult.url;
 
       if (finalPhotoUrl) {
         const plantRef = doc(db, 'plants', id);

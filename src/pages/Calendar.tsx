@@ -8,10 +8,11 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
 const taskConfig = {
-  watering: { icon: Droplets, color: "bg-blue-50 text-blue-700 border-blue-100" },
-  fertilizing: { icon: Sun, color: "bg-orange-50 text-orange-700 border-orange-100" },
-  repotting: { icon: History, color: "bg-purple-50 text-purple-700 border-purple-100" },
-  pruning: { icon: Scissors, color: "bg-green-50 text-green-700 border-green-100" },
+  watering: { icon: Droplets, color: "bg-blue-50 text-blue-700 border-blue-100", label: "Watering" },
+  fertilizing: { icon: Sun, color: "bg-orange-50 text-orange-700 border-orange-100", label: "Fertilizing" },
+  repotting: { icon: History, color: "bg-purple-50 text-purple-700 border-purple-100", label: "Repotting" },
+  pruning: { icon: Scissors, color: "bg-green-50 text-green-700 border-green-100", label: "Pruning" },
+  planting: { icon: Leaf, color: "bg-emerald-50 text-emerald-700 border-emerald-100", label: "Planted" },
 };
 
 export default function Calendar() {
@@ -22,6 +23,7 @@ export default function Calendar() {
   
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [viewingDayDetails, setViewingDayDetails] = useState<Date | null>(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedPlantId, setSelectedPlantId] = useState('');
   const [taskType, setTaskType] = useState<CareSchedule['type']>('watering');
@@ -77,6 +79,10 @@ export default function Calendar() {
   const prevMonth = () => setCurrentMonth(subMonths(currentMonth, 1));
 
   const handleDateClick = (day: Date) => {
+    setViewingDayDetails(day);
+  };
+
+  const handleOpenAddTask = (day: Date) => {
     setSelectedDate(day);
     setIsModalOpen(true);
     if (plants.length > 0 && !selectedPlantId) {
@@ -156,14 +162,18 @@ export default function Calendar() {
           
           {days.map(day => {
             const daySchedules = schedules.filter(s => isSameDay(parseISO(s.nextDate), day));
+            const dayPlantings = plants.filter(p => p.plantationDate && isSameDay(parseISO(p.plantationDate), day));
             
+            const isSelected = viewingDayDetails && isSameDay(day, viewingDayDetails);
+
             return (
               <button 
                 key={day.toString()} 
                 onClick={() => handleDateClick(day)}
                 className={cn(
                   "h-40 border-b border-r border-stone-100 p-2 relative group hover:bg-stone-50 transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-green-500/20 z-10",
-                  isToday(day) && "bg-green-50/30"
+                  isToday(day) && "bg-green-50/10",
+                  isSelected && "ring-2 ring-green-600 ring-inset bg-green-50/20"
                 )}
               >
                 <div className="flex items-center justify-between mb-2">
@@ -173,10 +183,32 @@ export default function Calendar() {
                   )}>
                     {format(day, 'd')}
                   </span>
-                  <Plus className="w-4 h-4 text-stone-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleOpenAddTask(day);
+                    }}
+                    className="p-1 hover:bg-stone-200 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Plus className="w-4 h-4 text-stone-600" />
+                  </button>
                 </div>
                 
                 <div className="space-y-1 overflow-y-auto max-h-[calc(100%-2.5rem)] pb-1 scrollbar-hide">
+                  {dayPlantings.map((plant) => (
+                    <div 
+                      key={`planting-${plant.id}`} 
+                      className={cn(
+                        "text-[9px] font-bold px-2 py-1.5 rounded-xl truncate flex items-center gap-1.5 border shadow-sm transition-transform hover:scale-[1.02] cursor-default",
+                        taskConfig.planting.color
+                      )}
+                      title={`Planted - ${plant.name}`}
+                    >
+                      <Leaf className="w-3 h-3 flex-shrink-0" />
+                      <span className="truncate">{plant.name}</span>
+                    </div>
+                  ))}
+
                   {daySchedules.map((schedule) => {
                     const plant = plants.find(p => p.id === schedule.plantId);
                     const config = taskConfig[schedule.type] || taskConfig.watering;
@@ -197,8 +229,8 @@ export default function Calendar() {
                     );
                   })}
 
-                  {daySchedules.length === 0 && isToday(day) && (
-                    <p className="text-[10px] text-stone-300 italic text-center mt-4">No tasks</p>
+                  {daySchedules.length === 0 && dayPlantings.length === 0 && isToday(day) && (
+                    <p className="text-[10px] text-stone-300 italic text-center mt-4">No activities</p>
                   )}
                 </div>
               </button>
@@ -206,6 +238,122 @@ export default function Calendar() {
           })}
         </div>
       </div>
+
+      {/* Day Details "Cards" Section */}
+      <AnimatePresence mode="wait">
+        {viewingDayDetails && (
+          <motion.div
+            key={viewingDayDetails.toISOString()}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="space-y-4"
+          >
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold text-stone-900">
+                Activities for {format(viewingDayDetails, 'MMMM do, yyyy')}
+              </h2>
+              <button 
+                onClick={() => handleOpenAddTask(viewingDayDetails)}
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 transition-all shadow-sm"
+              >
+                <Plus className="w-4 h-4" />
+                Add Task
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {(() => {
+                const daySchedules = schedules.filter(s => isSameDay(parseISO(s.nextDate), viewingDayDetails));
+                const dayPlantings = plants.filter(p => p.plantationDate && isSameDay(parseISO(p.plantationDate), viewingDayDetails));
+                
+                const plantsOnThisDay = Array.from(new Set([
+                  ...daySchedules.map(s => s.plantId),
+                  ...dayPlantings.map(p => p.id)
+                ])).map(id => plants.find(p => p.id === id)).filter(Boolean) as Plant[];
+
+                if (plantsOnThisDay.length === 0) {
+                  return (
+                    <div className="col-span-full py-12 bg-white rounded-3xl border border-dashed border-stone-200 flex flex-col items-center justify-center text-stone-400">
+                      <CalendarIcon className="w-12 h-12 mb-3 opacity-20" />
+                      <p className="font-medium">No plants scheduled for this day</p>
+                    </div>
+                  );
+                }
+
+                return plantsOnThisDay.map(plant => {
+                  const plantTasks = daySchedules.filter(s => s.plantId === plant.id);
+                  const isPlantingDay = dayPlantings.some(p => p.id === plant.id);
+                  
+                  return (
+                    <motion.div 
+                      key={plant.id}
+                      layoutId={plant.id}
+                      className="bg-white rounded-3xl border border-stone-100 shadow-sm p-5 hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex gap-4">
+                        <div className="w-16 h-16 rounded-2xl bg-stone-100 overflow-hidden flex-shrink-0">
+                          {plant.photoUrl ? (
+                            <img src={plant.photoUrl} alt={plant.name} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-stone-400">
+                              <Leaf className="w-6 h-6" />
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-stone-900 truncate">{plant.name}</h3>
+                          <p className="text-xs text-stone-500 truncate">{plant.species}</p>
+                          
+                          <div className="mt-3 flex flex-wrap gap-2">
+                             {isPlantingDay && (
+                               <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-lg border border-emerald-100">
+                                 <Leaf className="w-3 h-3" />
+                                 Planted Today
+                               </span>
+                             )}
+                             {plantTasks.map(task => {
+                               const config = taskConfig[task.type] || taskConfig.watering;
+                               const Icon = config.icon;
+                               return (
+                                 <span key={task.id} className={cn(
+                                   "inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold rounded-lg border",
+                                   config.color
+                                 )}>
+                                   <Icon className="w-3 h-3" />
+                                   {config.label}
+                                 </span>
+                               );
+                             })}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-4 pt-4 border-t border-stone-50 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1.5 bg-blue-50 rounded-lg">
+                            <Droplets className="w-3.5 h-3.5 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-stone-400 uppercase tracking-wider">Watering</p>
+                            <p className="text-xs font-medium text-stone-700">{plant.careGuide?.watering || 'Regularly'}</p>
+                          </div>
+                        </div>
+                        <a 
+                          href={`/plants/${plant.id}`}
+                          className="text-xs font-bold text-green-600 hover:text-green-700"
+                        >
+                          View Profile
+                        </a>
+                      </div>
+                    </motion.div>
+                  );
+                });
+              })()}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Task Creation Modal */}
       <AnimatePresence>
@@ -332,7 +480,7 @@ export default function Calendar() {
               <div className={cn("p-2 rounded-xl", config.color.split(' ')[0])}>
                 <Icon className="w-4 h-4" />
               </div>
-              <span className="text-xs font-bold text-stone-600 capitalize">{type}</span>
+              <span className="text-xs font-bold text-stone-600 capitalize">{config.label || type}</span>
             </div>
           );
         })}
